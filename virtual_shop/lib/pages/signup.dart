@@ -1,4 +1,7 @@
+import 'package:email_validator/email_validator.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:virtual_shop/auth/auth_service.dart';
 
 class SignUp extends StatefulWidget {
   @override
@@ -11,6 +14,27 @@ class _SignUpPageState extends State<SignUp> {
   String email = '';
   String password = '';
   bool isPasswordVisible = false;
+  String errorMessage = '';
+
+
+  void register()async{
+       
+       try {
+        bool isValid = EmailValidator.validate(email);
+        if (!isValid) {
+          setState(() {
+            errorMessage = 'Please enter a valid email address';
+          });
+          return;
+        } else await authServices.value.signUp(email: email, password: password);
+        //  Navigator.pushReplacementNamed(context, '/home'); 
+        Navigator.pop(context);
+       }on FirebaseAuthException catch   (e) {
+         print(e.message);
+         errorMessage = e.message ?? 'There is an error occurred';
+       }
+       
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,15 +106,26 @@ class _SignUpPageState extends State<SignUp> {
                     : null,
                 onSaved: (value) => password = value ?? '',
               ),
+
+              Text(
+                errorMessage ,
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 14,
+                ),
+              ),
               SizedBox(height: 32),
               ElevatedButton(
                 onPressed: () {
                   if (_formKey.currentState!.validate()) {
                     _formKey.currentState!.save();
-                    // Handle sign up logic here
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Signing up...')),
-                    );
+                    
+                    register();
+                    
+                    
+                    // ScaffoldMessenger.of(context).showSnackBar(
+                    //   SnackBar(content: Text('Signing up...')),
+                    // );
                   }
                 },
                 style: ElevatedButton.styleFrom(
