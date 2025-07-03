@@ -1,7 +1,9 @@
 import 'package:email_validator/email_validator.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:virtual_shop/auth/auth_service.dart';
+import 'package:flutter_signin_button/flutter_signin_button.dart';
 
 class SignUp extends StatefulWidget {
   @override
@@ -16,24 +18,44 @@ class _SignUpPageState extends State<SignUp> {
   bool isPasswordVisible = false;
   String errorMessage = '';
 
-
-  void register()async{
-       
-       try {
-        bool isValid = EmailValidator.validate(email);
-        if (!isValid) {
-          setState(() {
-            errorMessage = 'Please enter a valid email address';
-          });
-          return;
-        } else await authServices.value.signUp(email: email, password: password);
-        //  Navigator.pushReplacementNamed(context, '/home'); 
-        Navigator.pop(context);
-       }on FirebaseAuthException catch   (e) {
-         print(e.message);
-         errorMessage = e.message ?? 'There is an error occurred';
-       }
-       
+  void register() async {
+    try {
+      bool isValid = EmailValidator.validate(email);
+      if (!isValid) {
+        setState(() {
+          errorMessage = 'Please enter a valid email address';
+        });
+        return;
+      }
+      // Sign up user
+      UserCredential userCredential = await authServices.value.signUp(
+          email: email, password: password);
+      User? user = userCredential.user;
+      if (user != null && !user.emailVerified) {
+        await user.sendEmailVerification();
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Verify your email'),
+            content: Text(
+                'A verification link has been sent to your email. Please verify before logging in.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.pop(context); // Go back to login
+                },
+                child: Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() {
+        errorMessage = e.message ?? 'There is an error occurred';
+      });
+    }
   }
 
   @override
@@ -141,6 +163,29 @@ class _SignUpPageState extends State<SignUp> {
                 ),
               ),
               SizedBox(height: 16),
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                  child: SignInButton(
+                    Buttons.Google,
+                    onPressed: () async{
+                      // Google Sign-In logic here
+                      bool isloggedIn = await  login();
+                      if (isloggedIn) {
+                        Navigator.pop(context); // Close the sign-up page
+                      } else {
+                        setState(() {
+                          errorMessage = 'Google Sign-In failed';
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ),                
+              SizedBox(height: 16),
               TextButton(
                 onPressed: () {
                   // Navigate to login page
@@ -151,10 +196,30 @@ class _SignUpPageState extends State<SignUp> {
                   style: TextStyle(color: const Color.fromARGB(255, 58, 183, 164)),
                 ),
               ),
+
             ],
           ),
         ),
       ),
     );
   }
+}
+
+Future<bool> login() async {
+  // final GoogleSignIn googleSignIn = GoogleSignIn();
+  // final GoogleSignInAccount? user = await googleSignIn.signIn();
+
+  // You can handle the signed-in user here
+  final user = await GoogleSignIn().signIn();
+
+  GoogleSignInAuthentication userAuth = await user!.authentication;
+
+  var credential = GoogleAuthProvider.credential(
+    accessToken: userAuth.accessToken,
+    idToken: userAuth.idToken,
+  );
+
+  await FirebaseAuth.instance.signInWithCredential(credential);
+
+  return FirebaseAuth.instance.currentUser != null;
 }
