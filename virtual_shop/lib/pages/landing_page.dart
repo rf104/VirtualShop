@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:virtual_shop/pages/login.dart';
 import 'package:virtual_shop/pages/signup.dart';
 
 class LandingPage extends StatelessWidget {
@@ -39,7 +40,11 @@ class LandingPage extends StatelessWidget {
                   SizedBox(height: 15),
                   ElevatedButton(
                     onPressed: () {
-                      // Navigate to signup page
+                      // Navigate to login page
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => Login()),
+                      );
                     },
                     style: ButtonStyle(
                       backgroundColor: WidgetStateProperty.all<Color>(Colors.teal),
