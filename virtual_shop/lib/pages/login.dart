@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter_signin_button/flutter_signin_button.dart';
+import 'package:virtual_shop/pages/Profile.dart';
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -145,6 +146,25 @@ class LoginState extends State<Login> {
                             validator: (value) => value == null || value.isEmpty ? 'Enter your password' : null,
                             onSaved: (value) => password = value ?? '',
                           ),
+                          SizedBox(height: 9),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: () {
+                                 Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => Profile()),
+                              );
+                              },
+                              child: Text(
+                                'Forgot Password?',
+                                style: TextStyle(
+                                  color: Color.fromARGB(255, 62, 201, 136),
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
                           SizedBox(height: 16),
                           Text(
                             errorMessage,
@@ -167,6 +187,7 @@ class LoginState extends State<Login> {
                             ),
                             child: Text('Login', style: TextStyle(fontSize: 18, color: Colors.white)),
                           ),
+                          
                           SizedBox(height: 16),
                           Container(
                             decoration: BoxDecoration(
@@ -192,6 +213,7 @@ class LoginState extends State<Login> {
                               ),
                             ),
                           ),
+                          
                         ],
                       ),
                     ),
