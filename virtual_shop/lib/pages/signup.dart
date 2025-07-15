@@ -6,6 +6,8 @@ import 'package:virtual_shop/auth/auth_service.dart';
 import 'package:flutter_signin_button/flutter_signin_button.dart';
 
 class SignUp extends StatefulWidget {
+  const SignUp({super.key});
+
   @override
   SignUpPageState createState() => SignUpPageState();
 }
@@ -29,7 +31,9 @@ class SignUpPageState extends State<SignUp> {
       }
       // Sign up user
       UserCredential userCredential = await authServices.value.signUp(
-          email: email, password: password);
+        email: email,
+        password: password,
+      );
       User? user = userCredential.user;
       if (user != null && !user.emailVerified) {
         await user.sendEmailVerification();
@@ -38,7 +42,8 @@ class SignUpPageState extends State<SignUp> {
           builder: (context) => AlertDialog(
             title: Text('Verify your email'),
             content: Text(
-                'A verification link has been sent to your email. Please verify before logging in.'),
+              'A verification link has been sent to your email. Please verify before logging in.',
+            ),
             actions: [
               TextButton(
                 onPressed: () {
@@ -64,7 +69,8 @@ class SignUpPageState extends State<SignUp> {
       appBar: AppBar(
         title: Text(''),
         centerTitle: true,
-        backgroundColor: const Color.fromARGB(255, 2, 2, 2)      ),
+        backgroundColor: const Color.fromARGB(255, 2, 2, 2),
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -124,8 +130,9 @@ class SignUpPageState extends State<SignUp> {
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(Icons.person),
                             ),
-                            validator: (value) =>
-                                value == null || value.isEmpty ? 'Enter your name' : null,
+                            validator: (value) => value == null || value.isEmpty
+                                ? 'Enter your name'
+                                : null,
                             onSaved: (value) => name = value ?? '',
                           ),
                           SizedBox(height: 20),
@@ -136,8 +143,9 @@ class SignUpPageState extends State<SignUp> {
                               prefixIcon: Icon(Icons.email),
                             ),
                             keyboardType: TextInputType.emailAddress,
-                            validator: (value) =>
-                                value == null || value.isEmpty ? 'Enter your email' : null,
+                            validator: (value) => value == null || value.isEmpty
+                                ? 'Enter your email'
+                                : null,
                             onSaved: (value) => email = value ?? '',
                           ),
                           SizedBox(height: 20),
@@ -147,9 +155,11 @@ class SignUpPageState extends State<SignUp> {
                               border: OutlineInputBorder(),
                               prefixIcon: Icon(Icons.lock),
                               suffixIcon: IconButton(
-                                icon: Icon(isPasswordVisible
-                                    ? Icons.visibility
-                                    : Icons.visibility_off),
+                                icon: Icon(
+                                  isPasswordVisible
+                                      ? Icons.visibility
+                                      : Icons.visibility_off,
+                                ),
                                 onPressed: () {
                                   setState(() {
                                     isPasswordVisible = !isPasswordVisible;
@@ -158,35 +168,37 @@ class SignUpPageState extends State<SignUp> {
                               ),
                             ),
                             obscureText: !isPasswordVisible,
-                            validator: (value) => value == null || value.length < 6
+                            validator: (value) =>
+                                value == null || value.length < 6
                                 ? 'Password must be at least 6 characters'
                                 : null,
                             onSaved: (value) => password = value ?? '',
                           ),
-              
+
                           Text(
-                            errorMessage ,
-                            style: TextStyle(
-                              color: Colors.red,
-                              fontSize: 14,
-                            ),
+                            errorMessage,
+                            style: TextStyle(color: Colors.red, fontSize: 14),
                           ),
                           SizedBox(height: 32),
                           ElevatedButton(
                             onPressed: () {
                               if (_formKey.currentState!.validate()) {
                                 _formKey.currentState!.save();
-                                
+
                                 register();
-                                
-                                
+
                                 // ScaffoldMessenger.of(context).showSnackBar(
                                 //   SnackBar(content: Text('Signing up...')),
                                 // );
                               }
                             },
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color.fromARGB(255, 64, 202, 149),
+                              backgroundColor: const Color.fromARGB(
+                                255,
+                                64,
+                                202,
+                                149,
+                              ),
                               padding: EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -194,7 +206,10 @@ class SignUpPageState extends State<SignUp> {
                             ),
                             child: Text(
                               'Sign Up',
-                              style: TextStyle(fontSize: 18, color: Colors.white),
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                           SizedBox(height: 16),
@@ -203,14 +218,19 @@ class SignUpPageState extends State<SignUp> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 4,
+                                horizontal: 8,
+                              ),
                               child: SignInButton(
                                 Buttons.Google,
-                                onPressed: () async{
+                                onPressed: () async {
                                   // Google Sign-In logic here
-                                  bool isloggedIn = await  login();
+                                  bool isloggedIn = await login();
                                   if (isloggedIn) {
-                                    Navigator.pop(context); // Close the sign-up page
+                                    Navigator.pop(
+                                      context,
+                                    ); // Close the sign-up page
                                   } else {
                                     setState(() {
                                       errorMessage = 'Google Sign-In failed';
@@ -219,7 +239,7 @@ class SignUpPageState extends State<SignUp> {
                                 },
                               ),
                             ),
-                          ),                
+                          ),
                           SizedBox(height: 16),
                           TextButton(
                             onPressed: () {
@@ -228,10 +248,11 @@ class SignUpPageState extends State<SignUp> {
                             },
                             child: Text(
                               'Already have an account? Log in',
-                              style: TextStyle(color: const Color.fromARGB(255, 58, 183, 164)),
+                              style: TextStyle(
+                                color: const Color.fromARGB(255, 58, 183, 164),
+                              ),
                             ),
                           ),
-              
                         ],
                       ),
                     ),
