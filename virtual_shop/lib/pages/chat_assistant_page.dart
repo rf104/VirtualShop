@@ -72,7 +72,7 @@ class _ChatAssistantPageState extends State<ChatAssistantPage> {
               Expanded(child: _buildMessageList()),
               if (!_messages.any((m) => m.isUser)) ...[_buildSuggestions()],
               _buildInputBar(),
-              const SizedBox(height: 70),
+              const SizedBox(height: 85),
             ],
           ),
         ),
