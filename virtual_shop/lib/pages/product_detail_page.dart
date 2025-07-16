@@ -149,6 +149,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
+                            color: Colors.black,
                           ),
                         ),
                       ],
@@ -165,11 +166,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         style: const TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
+                          color: Colors.black,
                         ),
                       ),
                     ),
                     Text(
-                      '\$${widget.product.price.toStringAsFixed(2)}',
+                      '\৳${widget.product.price.toStringAsFixed(2)}',
                       style: const TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
@@ -190,7 +192,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   widget.product.description,
                   style: TextStyle(
                     fontSize: 16,
-                    color: Colors.grey[700],
+                    color: const Color.fromARGB(255, 41, 41, 41),
                     height: 1.5,
                   ),
                 ),
@@ -223,7 +225,13 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         color: Colors.grey[200],
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text('$label: $value', style: const TextStyle(fontSize: 12)),
+      child: Text(
+        '$label: $value',
+        style: const TextStyle(
+          fontSize: 12,
+          color: Color.fromARGB(255, 112, 112, 112),
+        ),
+      ),
     );
   }
 

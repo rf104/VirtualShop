@@ -6,11 +6,11 @@ class FavoriteStores extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<Map<String, String>> stores = [
-      {'logo': 'assets/images/c1.png', 'name': 'company1'},
-      {'logo': 'assets/images/c2.png', 'name': 'company2'},
-      {'logo': 'assets/images/c3.png', 'name': 'company3'},
-      {'logo': 'assets/images/c1.png', 'name': 'company4'},
-      {'logo': 'assets/images/c2.png', 'name': 'company5'},
+      {'logo': 'assets/images/c1.png', 'name': 'Akash'},
+      {'logo': 'assets/images/c2.png', 'name': 'Tech world'},
+      {'logo': 'assets/images/c3.png', 'name': 'Fashion Hub'},
+      {'logo': 'assets/images/c1.png', 'name': 'Gadget Store'},
+      {'logo': 'assets/images/c2.png', 'name': 'ElectroMart'},
     ];
 
     return Column(

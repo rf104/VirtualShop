@@ -33,6 +33,7 @@ class ProfilePage extends StatelessWidget {
                 _buildThreadsSection(),
                 const SizedBox(height: 30),
                 _buildMyPostsSection(context),
+                const SizedBox(height: 50),
               ],
             ),
           ),
@@ -48,7 +49,7 @@ class ProfilePage extends StatelessWidget {
       'assets/images/demo3.jpg',
       'assets/images/demo4.jpg',
       'assets/images/demo5.jpg',
-      'assets/images/hoodie.png',
+      'assets/images/couple.jpg',
     ];
 
     return Container(
@@ -181,7 +182,7 @@ class ProfilePage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Threads',
+            'Summary',
             style: TextStyle(
               color: Colors.white,
               fontSize: 20,
@@ -193,10 +194,10 @@ class ProfilePage extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildStatCard('Sessions', '2.378'),
+                _buildStatCard('Purchases', '2000TK'),
                 _buildStatCard('Age', '32 y.o'),
-                _buildStatCard('Videos', '25.899'),
-                _buildStatCard('TV', 'A'),
+                _buildStatCard('Likes', '25,899'),
+                _buildStatCard('Photos', '6'),
               ],
             ),
           ),

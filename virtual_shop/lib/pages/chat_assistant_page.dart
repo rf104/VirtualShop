@@ -12,7 +12,7 @@ class _ChatAssistantPageState extends State<ChatAssistantPage> {
   final ScrollController _scrollController = ScrollController();
   final List<_ChatMessage> _messages = [
     _ChatMessage(
-      text: "Here are some ideas for your birthday surprise!",
+      text: "You can do anything with Syncra, just ask!",
       isUser: false,
     ),
   ];
@@ -87,7 +87,7 @@ class _ChatAssistantPageState extends State<ChatAssistantPage> {
         children: [
           CircleAvatar(
             radius: 25,
-            backgroundImage: AssetImage('assets/images/profile.jpg'),
+            backgroundImage: AssetImage('assets/images/profile2.jpg'),
           ),
           SizedBox(width: 15),
           Column(
@@ -98,7 +98,7 @@ class _ChatAssistantPageState extends State<ChatAssistantPage> {
                 style: TextStyle(color: Colors.white70, fontSize: 18),
               ),
               Text(
-                'Chris',
+                'Alice',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 22,
@@ -127,14 +127,14 @@ class _ChatAssistantPageState extends State<ChatAssistantPage> {
           Expanded(
             child: _buildSuggestionCard(
               icon: Icons.games_outlined,
-              text: 'Epic and Affordable Game Night for Five Friends',
+              text: 'Epic and Affordable Outfit Ideas',
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: _buildSuggestionCard(
               icon: Icons.group_work_outlined,
-              text: 'Ultimate Friends for Fun',
+              text: 'Best Group Gift Ideas for Your Friends',
             ),
           ),
         ],

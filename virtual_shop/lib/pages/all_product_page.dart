@@ -12,8 +12,8 @@ class AllProductPage extends StatefulWidget {
 class _AllProductPageState extends State<AllProductPage> {
   final List<Product> products = [
     Product(
-      name: 'Moody Day',
-      image: 'assets/images/c1.png',
+      name: 'Winter Shearling Jacket',
+      image: 'assets/images/hoodie.jpg',
       rating: 4.1,
       price: 120.00,
       category: 'Cozy Wear',
@@ -24,20 +24,20 @@ class _AllProductPageState extends State<AllProductPage> {
           'Elevate your winter wardrobe with this luxurious white shearling jacket, paired with a chic black turtleneck and matching skirt. Perfect for a stylish day out, this outfit combines comfort and high fashion, ensuring you stay warm and turn heads wherever you go.',
     ),
     Product(
-      name: 'Wet Weather Elegance',
-      image: 'assets/images/c2.png',
+      name: 'Casual Chic Ensemble',
+      image: 'assets/images/hat1.jpg',
       rating: 4.1,
       price: 85.50,
-      category: 'Cozy Wear',
-      weather: 'Rainy',
+      category: 'Regular Wear',
+      weather: 'Neutral',
       temp: '16-22°C',
       event: 'Promenade',
       description:
-          'Brave the elements in style with this vibrant yellow rain jacket, layered over a classic striped tee and a flowing blush pink skirt. This chic ensemble proves that rainy days dont have to be drab. Its the perfect blend of practicality and playful elegance for any casual outing.',
+          'Step out in style with this casual chic ensemble featuring a trendy hat.',
     ),
     Product(
-      name: 'Urban Explorer',
-      image: 'assets/images/c3.png',
+      name: 'Urban Explorer Outfit',
+      image: 'assets/images/shoe.jpg',
       rating: 4.9,
       price: 215.00,
       category: 'Cozy Wear',
@@ -45,7 +45,7 @@ class _AllProductPageState extends State<AllProductPage> {
       temp: '16-22°C',
       event: 'Promenade',
       description:
-          'Conquer the city streets in this edgy and comfortable outfit. Featuring a versatile grey hoodie under a sleek, modern jacket, paired with dark-wash jeans, this look is perfect for the urban adventurer. Stay warm, comfortable, and effortlessly cool on your daily explorations.',
+          'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
     ),
   ];
 
@@ -253,7 +253,7 @@ class ProductCard extends StatelessWidget {
           children: [
             Flexible(
               child: Text(
-                '\$${product.price.toStringAsFixed(2)}',
+                '\৳${product.price.toStringAsFixed(2)}',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   color: Colors.white,

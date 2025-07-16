@@ -7,9 +7,9 @@ class BestSellerWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<Map<String, String>> bestSellers = [
-      {'image': 'assets/images/hoodie.png', 'name': 'Hoodie', 'price': '\$40'},
-      {'image': 'assets/images/hat.jpg', 'name': 'Hat', 'price': '\$20'},
-      {'image': 'assets/images/outfit.png', 'name': 'Outfit', 'price': '\$120'},
+      {'image': 'assets/images/hoodie.jpg', 'name': 'Hoodie', 'price': '\৳40'},
+      {'image': 'assets/images/hat.jpg', 'name': 'Hat', 'price': '\৳20'},
+      {'image': 'assets/images/shoe.jpg', 'name': 'Shoe', 'price': '\৳120'},
     ];
 
     return Column(

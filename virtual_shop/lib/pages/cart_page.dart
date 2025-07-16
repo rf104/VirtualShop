@@ -114,7 +114,7 @@ class _CartPageState extends State<CartPage> {
                     ),
                   ),
                   Text(
-                    '\${item['price']}',
+                    '\৳${item['price']}',
                     style: TextStyle(color: Colors.white.withOpacity(0.8)),
                   ),
                 ],
@@ -179,7 +179,7 @@ class _CartPageState extends State<CartPage> {
                 style: TextStyle(fontSize: 16, color: Colors.white),
               ),
               Text(
-                '\${subtotal.toStringAsFixed(2)}',
+                '\৳${subtotal.toStringAsFixed(2)}',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -197,7 +197,7 @@ class _CartPageState extends State<CartPage> {
                 style: TextStyle(fontSize: 16, color: Colors.white),
               ),
               Text(
-                '\${shipping.toStringAsFixed(2)}',
+                '\৳${shipping.toStringAsFixed(2)}',
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -219,7 +219,7 @@ class _CartPageState extends State<CartPage> {
                 ),
               ),
               Text(
-                '\${total.toStringAsFixed(2)}',
+                '\৳${total.toStringAsFixed(2)}',
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,

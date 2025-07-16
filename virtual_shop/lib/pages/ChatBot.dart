@@ -12,13 +12,12 @@ class ChatBot extends StatefulWidget {
 class _ChatBotState extends State<ChatBot> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, String>> _messages = [
-    {'role': 'bot', 'text': 'Hello! How can I help you?'}
+    {'role': 'bot', 'text': 'Hello! How can I help you?'},
   ];
 
   // String get _apiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
   //  String _apiKey = "AIzaSyAFyBNW9qlBoZ12Gnn20VNcN4zLCIMjxRM";
-   final String _apiKey = dotenv.env['GEMINI_API_KEY'] ?? '';
-   
+  final String _apiKey = '';
 
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
@@ -29,10 +28,7 @@ class _ChatBotState extends State<ChatBot> {
     });
 
     // Gemini API call
-    final model = GenerativeModel(
-      model: 'gemini-pro',
-      apiKey: _apiKey,
-    );
+    final model = GenerativeModel(model: 'gemini-pro', apiKey: _apiKey);
     final content = [Content.text(text)];
     try {
       final response = await model.generateContent(content);
@@ -89,7 +85,9 @@ class _ChatBotState extends State<ChatBot> {
                     final msg = _messages[index];
                     final isUser = msg['role'] == 'user';
                     return Align(
-                      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                      alignment: isUser
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
                       child: Container(
                         margin: EdgeInsets.symmetric(vertical: 4),
                         padding: EdgeInsets.all(12),

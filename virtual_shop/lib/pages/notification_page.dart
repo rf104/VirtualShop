@@ -14,7 +14,7 @@ class _NotificationPageState extends State<NotificationPage> {
     {
       'icon': Icons.person_add,
       'title': 'New Follower',
-      'message': 'John Doe started following you.',
+      'message': 'Arik started following you.',
       'time': '5m ago',
       'iconColor': Colors.blue,
     },
@@ -35,7 +35,7 @@ class _NotificationPageState extends State<NotificationPage> {
     {
       'icon': Icons.person_add,
       'title': 'New Follower',
-      'message': 'John Doe started following you.',
+      'message': 'Arik started following you.',
       'time': '5m ago',
       'iconColor': Colors.blue,
     },
@@ -49,7 +49,7 @@ class _NotificationPageState extends State<NotificationPage> {
     {
       'icon': Icons.person_add,
       'title': 'New Follower',
-      'message': 'John Doe started following you.',
+      'message': 'Arik started following you.',
       'time': '5m ago',
       'iconColor': Colors.blue,
     },
