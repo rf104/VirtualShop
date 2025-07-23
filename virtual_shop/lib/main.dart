@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:virtual_shop/pages/home_page.dart';
-import 'package:virtual_shop/pages/landing_page.dart';
 import 'package:virtual_shop/utils/theme.dart';
 import 'firebase_options.dart';
 
@@ -21,7 +20,7 @@ class MyApp extends StatelessWidget {
       theme: lightTheme,
       darkTheme: darkTheme,
       themeMode: ThemeMode.system,
-      home: const LandingPage(),
+      home: const HomePage(),
     );
   }
 }

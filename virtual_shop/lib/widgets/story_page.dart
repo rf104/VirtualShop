@@ -35,8 +35,9 @@ class Story extends StatefulWidget {
 }
 
 class _StoryState extends State<Story> {
-  List<Color> allColors = [];
-  List<Color> textColors = [];
+  Map<String, List<Color>> _colorCache = {};
+  List<Color> _allColors = [Colors.blue, Colors.white];
+  List<Color> _textColors = [Colors.blue, Colors.white];
   bool _isMenuOpen = false;
 
   final List<Person> people = [
@@ -162,7 +163,7 @@ class _StoryState extends State<Story> {
     selectedName = people[0].products[0].name;
     _pageController = PageController();
     _personPageController = PageController(viewportFraction: 0.25);
-    _updatePalette();
+    _precachePalettes();
   }
 
   @override
@@ -172,14 +173,24 @@ class _StoryState extends State<Story> {
     super.dispose();
   }
 
-  Future<void> _updatePalette() async {
-    final ImageProvider imageProvider = AssetImage(selectedImage);
-    final List<Color> colors = await _generatePalette(imageProvider);
-    if (!mounted) return;
-    setState(() {
-      allColors = colors;
-      textColors = colors;
-    });
+  Future<void> _precachePalettes() async {
+    for (final person in people) {
+      for (final product in person.products) {
+        if (!_colorCache.containsKey(product.image)) {
+          final imageProvider = AssetImage(product.image);
+          final colors = await _generatePalette(imageProvider);
+          _colorCache[product.image] = colors;
+        }
+      }
+    }
+    if (mounted) {
+      setState(() {
+        final initialColors =
+            _colorCache[selectedImage] ?? [Colors.blue, Colors.white];
+        _allColors = initialColors;
+        _textColors = initialColors;
+      });
+    }
   }
 
   void updatePerson(int index) {
@@ -188,9 +199,12 @@ class _StoryState extends State<Story> {
       selectedProductIndex = 0;
       selectedImage = people[index].products[0].image;
       selectedName = people[index].products[0].name;
+      final newColors =
+          _colorCache[selectedImage] ?? [Colors.blue, Colors.white];
+      _allColors = newColors;
+      _textColors = newColors;
     });
     _pageController.jumpToPage(0);
-    _updatePalette();
   }
 
   void updateProduct(int index) {
@@ -198,14 +212,19 @@ class _StoryState extends State<Story> {
       selectedProductIndex = index;
       selectedImage = people[selectedPersonIndex].products[index].image;
       selectedName = people[selectedPersonIndex].products[index].name;
+      final newColors =
+          _colorCache[selectedImage] ?? [Colors.blue, Colors.white];
+      _allColors = newColors;
+      _textColors = newColors;
     });
-    _updatePalette();
   }
 
   @override
   Widget build(BuildContext context) {
     final Gradient titleGradient = LinearGradient(
-      colors: textColors.isNotEmpty ? textColors : [Colors.blue, Colors.white],
+      colors: _textColors.isNotEmpty
+          ? _textColors
+          : [Colors.blue, Colors.white],
     );
     final person = people[selectedPersonIndex];
     final products = person.products;
@@ -217,8 +236,8 @@ class _StoryState extends State<Story> {
           ShaderMask(
             shaderCallback: (Rect bounds) {
               return LinearGradient(
-                colors: allColors.isNotEmpty
-                    ? allColors
+                colors: _allColors.isNotEmpty
+                    ? _allColors
                     : [Colors.blue, Colors.white],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
@@ -306,6 +325,7 @@ class _StoryState extends State<Story> {
                   height: 8,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
+
                     children: List.generate(products.length, (index) {
                       return AnimatedContainer(
                         duration: const Duration(milliseconds: 300),

@@ -6,20 +6,30 @@ import 'package:virtual_shop/pages/chat_page.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
+  final Color? dominantColor;
 
-  const ProductDetailPage({super.key, required this.product});
+  const ProductDetailPage({
+    super.key,
+    required this.product,
+    this.dominantColor,
+  });
 
   @override
   State<ProductDetailPage> createState() => _ProductDetailPageState();
 }
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
-  Color _dominantColor = Colors.white;
+  late Color _dominantColor;
 
   @override
   void initState() {
     super.initState();
-    _updatePaletteGenerator();
+    if (widget.dominantColor != null) {
+      _dominantColor = widget.dominantColor!;
+    } else {
+      _dominantColor = Colors.white;
+      _updatePaletteGenerator();
+    }
   }
 
   Future<void> _updatePaletteGenerator() async {
@@ -27,9 +37,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       AssetImage(widget.product.image),
     );
     if (paletteGenerator.dominantColor != null) {
-      setState(() {
-        _dominantColor = paletteGenerator.dominantColor!.color;
-      });
+      if (mounted) {
+        setState(() {
+          _dominantColor = paletteGenerator.dominantColor!.color;
+        });
+      }
     }
   }
 

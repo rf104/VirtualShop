@@ -11,6 +11,7 @@ class PromotionWidget extends StatefulWidget {
 class _PromotionWidgetState extends State<PromotionWidget> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
+  late final List<Color> _dominantColors;
 
   final List<Map<String, String>> _promotions = [
     {
@@ -33,6 +34,8 @@ class _PromotionWidgetState extends State<PromotionWidget> {
   @override
   void initState() {
     super.initState();
+    _dominantColors = List.filled(_promotions.length, Colors.grey[900]!);
+    _updateAllPalettes();
     _pageController.addListener(() {
       if (_pageController.page != null) {
         setState(() {
@@ -40,6 +43,27 @@ class _PromotionWidgetState extends State<PromotionWidget> {
         });
       }
     });
+  }
+
+  Future<void> _updateAllPalettes() async {
+    List<Color> colors = [];
+    for (var promotion in _promotions) {
+      final provider = AssetImage(promotion['image']!);
+      final paletteGenerator = await PaletteGenerator.fromImageProvider(
+        provider,
+        size: const Size(150, 190), // Specify size for performance
+      );
+      if (paletteGenerator.dominantColor != null) {
+        colors.add(paletteGenerator.dominantColor!.color);
+      } else {
+        colors.add(Colors.grey[900]!); // fallback color
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _dominantColors = colors;
+      });
+    }
   }
 
   @override
@@ -64,6 +88,7 @@ class _PromotionWidgetState extends State<PromotionWidget> {
                 title: promotion['title']!,
                 subtitle: promotion['subtitle']!,
                 image: promotion['image']!,
+                dominantColor: _dominantColors[index],
               );
             },
           ),
@@ -90,48 +115,19 @@ class _PromotionWidgetState extends State<PromotionWidget> {
   }
 }
 
-class PromotionCard extends StatefulWidget {
+class PromotionCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final String image;
+  final Color dominantColor;
 
   const PromotionCard({
     super.key,
     required this.title,
     required this.subtitle,
     required this.image,
+    required this.dominantColor,
   });
-
-  @override
-  State<PromotionCard> createState() => _PromotionCardState();
-}
-
-class _PromotionCardState extends State<PromotionCard> {
-  Color _dominantColor = Colors.grey[900]!;
-
-  @override
-  void initState() {
-    super.initState();
-    _updatePalette();
-  }
-
-  @override
-  void didUpdateWidget(covariant PromotionCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.image != oldWidget.image) {
-      _updatePalette();
-    }
-  }
-
-  Future<void> _updatePalette() async {
-    final provider = AssetImage(widget.image);
-    final paletteGenerator = await PaletteGenerator.fromImageProvider(provider);
-    if (paletteGenerator.dominantColor != null) {
-      setState(() {
-        _dominantColor = paletteGenerator.dominantColor!.color;
-      });
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,7 +135,7 @@ class _PromotionCardState extends State<PromotionCard> {
       margin: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [_dominantColor, _dominantColor.withOpacity(0.7)],
+          colors: [dominantColor, dominantColor.withOpacity(0.7)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -159,7 +155,7 @@ class _PromotionCardState extends State<PromotionCard> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          widget.title,
+                          title,
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
@@ -168,7 +164,7 @@ class _PromotionCardState extends State<PromotionCard> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          widget.subtitle,
+                          subtitle,
                           style: const TextStyle(
                             fontSize: 14,
                             color: Colors.white70,
@@ -191,8 +187,8 @@ class _PromotionCardState extends State<PromotionCard> {
                     begin: Alignment.centerRight,
                     end: Alignment.centerLeft,
                     colors: [
-                      _dominantColor,
-                      _dominantColor.withOpacity(1.0),
+                      dominantColor,
+                      dominantColor.withOpacity(1.0),
                       Colors.transparent,
                     ],
                     stops: const [0.0, 0.5, 1.0],
@@ -200,7 +196,7 @@ class _PromotionCardState extends State<PromotionCard> {
                 },
                 blendMode: BlendMode.dstIn,
                 child: Image.asset(
-                  widget.image,
+                  image,
                   width: 150,
                   height: double.infinity,
                   fit: BoxFit.cover,
