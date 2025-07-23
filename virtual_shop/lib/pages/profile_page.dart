@@ -1,8 +1,44 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'package:palette_generator/palette_generator.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  List<Color> _gradientColors = [const Color(0xFF8E9EAB), Colors.black];
+
+  @override
+  void initState() {
+    super.initState();
+    _updatePalette();
+  }
+
+  Future<void> _updatePalette() async {
+    final paletteGenerator = await PaletteGenerator.fromImageProvider(
+      const AssetImage('assets/images/profile6.jpg'),
+    );
+    if (paletteGenerator.colors.length >= 2) {
+      if (mounted) {
+        setState(() {
+          _gradientColors = [
+            paletteGenerator.colors.elementAt(0),
+            paletteGenerator.colors.elementAt(1),
+          ];
+        });
+      }
+    } else if (paletteGenerator.colors.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _gradientColors = [paletteGenerator.colors.first, Colors.black];
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -12,9 +48,9 @@ class ProfilePage extends StatelessWidget {
         children: [
           // Background with gradient
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF8E9EAB), Color(0xFFEEA47F)],
+                colors: _gradientColors,
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -126,7 +162,7 @@ class ProfilePage extends StatelessWidget {
           blendMode: BlendMode.dstIn,
           child: Image.asset(
             'assets/images/profile2.jpg',
-            height: MediaQuery.of(context).size.height * 0.4,
+            height: MediaQuery.of(context).size.height * 0.8,
             width: double.infinity,
             fit: BoxFit.cover,
           ),
@@ -138,7 +174,7 @@ class ProfilePage extends StatelessWidget {
           'Alice Eve',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 32,
+            fontSize: 42,
             fontWeight: FontWeight.bold,
           ),
         ),
