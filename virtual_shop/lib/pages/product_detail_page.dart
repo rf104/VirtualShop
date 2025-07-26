@@ -183,7 +183,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       ),
                     ),
                     Text(
-                      '\৳${widget.product.price.toStringAsFixed(2)}',
+                      '৳${widget.product.price.toStringAsFixed(2)}',
                       style: const TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,

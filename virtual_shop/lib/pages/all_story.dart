@@ -5,7 +5,6 @@ import 'package:virtual_shop/widgets/favorite_stores.dart';
 import 'package:virtual_shop/widgets/promotion_widget.dart';
 import 'package:virtual_shop/widgets/shop_screenshots_widget.dart';
 import 'package:virtual_shop/widgets/story_page.dart';
-import 'package:virtual_shop/widgets/stats_widget.dart';
 
 class AllStoryPage extends StatelessWidget {
   const AllStoryPage({super.key});

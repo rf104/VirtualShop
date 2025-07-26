@@ -35,7 +35,7 @@ class Story extends StatefulWidget {
 }
 
 class _StoryState extends State<Story> {
-  Map<String, List<Color>> _colorCache = {};
+  final Map<String, List<Color>> _colorCache = {};
   List<Color> _allColors = [Colors.blue, Colors.white];
   List<Color> _textColors = [Colors.blue, Colors.white];
   bool _isMenuOpen = false;

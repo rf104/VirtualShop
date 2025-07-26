@@ -1,6 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:virtual_shop/pages/auth_page.dart'; 
 import 'package:virtual_shop/pages/landing_page.dart';
 import 'package:virtual_shop/utils/theme.dart';
 
@@ -22,7 +21,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: lightTheme,
       darkTheme: darkTheme,
-      home: const LandingPage(), // Use AuthPage if SignUp does not exist
+      home: const LandingPage(), 
     );
   }
 }

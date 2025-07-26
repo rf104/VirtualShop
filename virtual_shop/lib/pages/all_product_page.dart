@@ -61,9 +61,9 @@ class _AllProductPageState extends State<AllProductPage> {
     ),
   ];
 
-  String _selectedWeather = 'Rainy';
-  String _selectedTemp = '16-22°C';
-  String _selectedEvent = 'Promenade';
+  final String _selectedWeather = 'Rainy';
+  final String _selectedTemp = '16-22°C';
+  final String _selectedEvent = 'Promenade';
 
   @override
   Widget build(BuildContext context) {
@@ -265,7 +265,7 @@ class ProductCard extends StatelessWidget {
           children: [
             Flexible(
               child: Text(
-                '\৳${product.price.toStringAsFixed(2)}',
+                '৳${product.price.toStringAsFixed(2)}',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
