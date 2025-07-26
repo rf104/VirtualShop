@@ -71,7 +71,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             tag: widget.product.image,
             child: Image.asset(
               widget.product.image,
-              fit: BoxFit.contain,
+              fit: BoxFit.cover,
               height: MediaQuery.of(context).size.height * 0.6,
               width: double.infinity,
             ),

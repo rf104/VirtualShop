@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:virtual_shop/pages/all_product_page.dart';
 import 'package:virtual_shop/pages/all_story.dart';
@@ -112,25 +114,34 @@ class _HomePageState extends State<HomePage> {
             child: _buildPage(_bottomNavIndex),
           ),
           Positioned(
-            left: 20,
-            right: 20,
+            left: 10,
+            right: 10,
             bottom: 20,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.8),
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _buildNavItem(Icons.home, 0),
-                  _buildNavItem(Icons.checkroom, 1),
-                  _buildNavItemWithBadge(Icons.shopping_bag_outlined, 2, 4),
-                  _buildNavItem(Icons.bubble_chart, 3),
-                  _buildNavItem(Icons.notifications, 4),
-                  _buildNavItem(Icons.person_outline, 5),
-                ],
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildNavItem(Icons.home, 0),
+                      _buildNavItem(Icons.checkroom, 1),
+                      _buildNavItemWithBadge(Icons.shopping_bag_outlined, 2, 4),
+                      _buildNavItem(Icons.bubble_chart, 3),
+                      _buildNavItem(Icons.notifications, 4),
+                      _buildNavItem(Icons.person_outline, 5),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
