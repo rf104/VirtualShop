@@ -31,6 +31,7 @@ dependencies:
   flutter:
     sdk: flutter
   
+  
   flutter_svg: ^2.0.7
 
   # The following adds the Cupertino Icons font to your application.
@@ -48,7 +49,7 @@ dependencies:
   image: ^4.1.0
   lottie: ^3.1.2
   google_generative_ai: ^0.4.0
-  google_generative_ai: ^0.2.2
+  # google_generative_ai: ^0.2.2
   flutter_dotenv: ^5.2.1
 
 dev_dependencies:
@@ -74,8 +75,8 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  assets:
-    - assets/images/
+  # assets:
+  #   - assets/images/
     # - assets/images/background.jpg
 
   # To add assets to your application, add an assets section, like this:
@@ -111,6 +112,7 @@ flutter:
 
   assets:
     - assets/images/
+    - .env
 
   fonts:
     - family: Poppins

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'edit_profile_page.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -139,6 +140,21 @@ class ProfilePage extends StatelessWidget {
             color: Colors.white,
             fontSize: 32,
             fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 10),
+        ElevatedButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const EditProfilePage()),
+            );
+          },
+          icon: const Icon(Icons.edit, color: Colors.white),
+          label: const Text('Edit Profile', style: TextStyle(color: Colors.white)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.white.withOpacity(0.2),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           ),
         ),
         const SizedBox(height: 20),
