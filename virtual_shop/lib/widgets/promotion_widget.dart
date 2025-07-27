@@ -35,7 +35,6 @@ class _PromotionWidgetState extends State<PromotionWidget> {
   void initState() {
     super.initState();
     _dominantColors = List.filled(_promotions.length, Colors.grey[900]!);
-    _updateAllPalettes();
     _pageController.addListener(() {
       if (_pageController.page != null) {
         setState(() {
@@ -43,26 +42,31 @@ class _PromotionWidgetState extends State<PromotionWidget> {
         });
       }
     });
+    _updateAllPalettes();
   }
 
   Future<void> _updateAllPalettes() async {
-    List<Color> colors = [];
-    for (var promotion in _promotions) {
-      final provider = AssetImage(promotion['image']!);
-      final paletteGenerator = await PaletteGenerator.fromImageProvider(
-        provider,
-        size: const Size(150, 190), // Specify size for performance
-      );
-      if (paletteGenerator.dominantColor != null) {
-        colors.add(paletteGenerator.dominantColor!.color);
-      } else {
-        colors.add(Colors.grey[900]!); // fallback color
+    if (!mounted) return;
+    
+    for (int i = 0; i < _promotions.length; i++) {
+      final provider = AssetImage(_promotions[i]['image']!);
+      try {
+        final paletteGenerator = await PaletteGenerator.fromImageProvider(
+          provider,
+          size: const Size(150, 190), // Specify size for performance
+        );
+        if (mounted) {
+          setState(() {
+            _dominantColors[i] = paletteGenerator.dominantColor?.color ?? Colors.grey[900]!;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _dominantColors[i] = Colors.grey[900]!;
+          });
+        }
       }
-    }
-    if (mounted) {
-      setState(() {
-        _dominantColors = colors;
-      });
     }
   }
 

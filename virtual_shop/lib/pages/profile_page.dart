@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
+import 'edit_profile_final.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -176,6 +177,22 @@ class _ProfilePageState extends State<ProfilePage> {
             color: Colors.white,
             fontSize: 42,
             fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 10),
+        ElevatedButton.icon(
+          onPressed: () {
+            showDialog(
+              context: context,
+              builder: (context) => const EditProfileFinal(),
+              barrierDismissible: false,
+            );
+          },
+          icon: const Icon(Icons.edit, color: Colors.white),
+          label: const Text('Edit Profile', style: TextStyle(color: Colors.white)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.white.withOpacity(0.2),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           ),
         ),
         const SizedBox(height: 20),

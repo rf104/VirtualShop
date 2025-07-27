@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/pages/chat_page.dart';
+import 'package:virtual_shop/pages/virtual_try_on_page.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
@@ -20,6 +21,8 @@ class ProductDetailPage extends StatefulWidget {
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
   late Color _dominantColor;
+  final List<String> _comments = [];
+  final TextEditingController _commentController = TextEditingController();
 
   @override
   void initState() {
@@ -32,6 +35,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     }
   }
 
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
+
   Future<void> _updatePaletteGenerator() async {
     final paletteGenerator = await PaletteGenerator.fromImageProvider(
       AssetImage(widget.product.image),
@@ -42,6 +51,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           _dominantColor = paletteGenerator.dominantColor!.color;
         });
       }
+    }
+  }
+
+  void _addComment() {
+    if (_commentController.text.isNotEmpty) {
+      setState(() {
+        _comments.add(_commentController.text);
+        _commentController.clear();
+      });
     }
   }
 
@@ -99,7 +117,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             children: [
               IconButton(
                 icon: const Icon(Icons.favorite_border, color: Colors.black),
-                onPressed: () {},
+                onPressed: () {
+                  // TODO: Implement favorite functionality
+                },
               ),
               IconButton(
                 icon: const Icon(Icons.voice_chat, color: Colors.black),
@@ -112,7 +132,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               ),
               IconButton(
                 icon: const Icon(Icons.share_outlined, color: Colors.black),
-                onPressed: () {},
+                onPressed: () {
+                  // TODO: Implement share functionality
+                },
               ),
             ],
           ),
@@ -125,7 +147,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     return DraggableScrollableSheet(
       initialChildSize: 0.5,
       minChildSize: 0.5,
-      maxChildSize: 0.8,
+      maxChildSize: 0.9,
       builder: (context, scrollController) {
         return Container(
           padding: const EdgeInsets.all(24),
@@ -210,6 +232,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 ),
                 const SizedBox(height: 24),
                 _buildActionButtons(),
+                const SizedBox(height: 32),
+                _buildCommentSection(),
               ],
             ),
           ),
@@ -252,7 +276,17 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       children: [
         Expanded(
           child: ElevatedButton(
-            onPressed: () {},
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => VirtualTryOnPage(
+                    productImage: widget.product.image,
+                    productName: widget.product.name,
+                  ),
+                ),
+              );
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.black,
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -269,7 +303,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         const SizedBox(width: 16),
         Expanded(
           child: ElevatedButton(
-            onPressed: () {},
+            onPressed: () {
+              // TODO: Implement Add to cart functionality
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFADFF2F),
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -277,12 +313,86 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 borderRadius: BorderRadius.circular(30),
               ),
             ),
-            child: Text(
+            child: const Text(
               'Add to cart',
-              style: const TextStyle(fontSize: 16, color: Colors.black),
+              style: TextStyle(fontSize: 16, color: Colors.black),
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildCommentSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Comments',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _commentController,
+                decoration: InputDecoration(
+                  hintText: 'Write a comment...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10.0),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+                onSubmitted: (value) => _addComment(),
+              ),
+            ),
+            const SizedBox(width: 10),
+            FloatingActionButton(
+              onPressed: _addComment,
+              mini: true,
+              backgroundColor: const Color(0xFFADFF2F),
+              child: const Icon(Icons.send, color: Colors.black),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _comments.isEmpty
+            ? Center(
+                child: Text(
+                  'No comments yet. Be the first to share your thoughts!',
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  textAlign: TextAlign.center,
+                ),
+              )
+            : ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _comments.length,
+                itemBuilder: (context, index) {
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8.0),
+                    elevation: 1,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12.0),
+                      child: Text(
+                        _comments[index],
+                        style: const TextStyle(
+                          fontSize: 15,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+        const SizedBox(height: 24),
       ],
     );
   }

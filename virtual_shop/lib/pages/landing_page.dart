@@ -84,9 +84,10 @@ class _LandingPageState extends State<LandingPage>
                 height: MediaQuery.of(context).size.height * 0.55,
                 width: double.infinity,
                 padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
                     AnimatedBuilder(
                       animation: _logoAnimation,
                       builder: (context, child) {
@@ -325,7 +326,7 @@ class _LandingPageState extends State<LandingPage>
                     ),
                   ],
                 ),
-              ),
+              )),
               // Bottom section with buttons
               Expanded(
                 child: Container(

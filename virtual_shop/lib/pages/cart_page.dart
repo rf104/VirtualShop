@@ -130,7 +130,7 @@ class _CartPageState extends State<CartPage> {
                   onPressed: () => _decrementQuantity(index),
                 ),
                 Text(
-                  '${item['quantity']}',
+                  '\৳${item['quantity']}',
                   style: const TextStyle(color: Colors.white, fontSize: 16),
                 ),
                 IconButton(
@@ -219,7 +219,7 @@ class _CartPageState extends State<CartPage> {
                 ),
               ),
               Text(
-                '৳${total.toStringAsFixed(2)}',
+                '\৳${total.toStringAsFixed(2)}',
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
