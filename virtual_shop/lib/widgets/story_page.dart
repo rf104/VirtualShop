@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:virtual_shop/models/product.dart';
 
 import 'package:virtual_shop/pages/product_detail_page.dart';
+import 'package:virtual_shop/widgets/glass_container.dart';
 
 Future<List<Color>> _generatePalette(ImageProvider imageProvider) async {
   final PaletteGenerator generator = await PaletteGenerator.fromImageProvider(
@@ -38,7 +39,6 @@ class _StoryState extends State<Story> {
   final Map<String, List<Color>> _colorCache = {};
   List<Color> _allColors = [Colors.blue, Colors.white];
   List<Color> _textColors = [Colors.blue, Colors.white];
-  bool _isMenuOpen = false;
 
   final List<Person> people = [
     Person(
@@ -349,11 +349,13 @@ class _StoryState extends State<Story> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                AnimatedOpacity(
-                  opacity: _isMenuOpen ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 300),
-                  child: Visibility(
-                    visible: _isMenuOpen,
+                GlassContainer(
+                  borderRadius: 20,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 15.0,
+                      horizontal: 8.0,
+                    ),
                     child: Column(
                       children: [
                         GestureDetector(
@@ -402,28 +404,7 @@ class _StoryState extends State<Story> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 15),
                       ],
-                    ),
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _isMenuOpen = !_isMenuOpen;
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Image.asset(
-                      _isMenuOpen
-                          ? 'assets/images/menu_open.png'
-                          : 'assets/images/menu_closed.png',
-                      width: 24,
                     ),
                   ),
                 ),

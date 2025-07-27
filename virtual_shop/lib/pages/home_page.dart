@@ -7,7 +7,7 @@ import 'package:virtual_shop/pages/cart_page.dart';
 import 'package:virtual_shop/pages/chat_assistant_page.dart';
 import 'package:virtual_shop/pages/notification_page.dart';
 import 'package:virtual_shop/pages/profile_page.dart';
-import 'package:oc_liquid_glass/oc_liquid_glass.dart';
+import 'package:virtual_shop/widgets/glass_container.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -115,34 +115,26 @@ class _HomePageState extends State<HomePage> {
             left: 10,
             right: 10,
             bottom: 20,
-            child: OCLiquidGlassGroup(
-              settings: const OCLiquidGlassSettings(
-                blurRadiusPx: 5,
-                lightbandColor: Colors.greenAccent,
-                specAngle: 0.0,
-                specStrength: 0.0,
-              ),
-              child: OCLiquidGlass(
-                width: MediaQuery.of(context).size.width - 20,
-                height: 70,
-                borderRadius: 30,
-                color: Colors.black.withOpacity(0.2),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildNavItem(Icons.home, 0),
-                      _buildNavItem(Icons.checkroom, 1),
-                      _buildNavItemWithBadge(Icons.shopping_bag_outlined, 2, 4),
-                      _buildNavItem(Icons.bubble_chart, 3),
-                      _buildNavItem(Icons.notifications, 4),
-                      _buildNavItem(Icons.person_outline, 5),
-                    ],
-                  ),
+            child: GlassContainer(
+              width: MediaQuery.of(context).size.width - 20,
+              height: 70,
+              borderRadius: 30,
+              color: Colors.black.withOpacity(0.2),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildNavItem(Icons.home, 0),
+                    _buildNavItem(Icons.checkroom, 1),
+                    _buildNavItemWithBadge(Icons.shopping_bag_outlined, 2, 4),
+                    _buildNavItem(Icons.bubble_chart, 3),
+                    _buildNavItem(Icons.notifications, 4),
+                    _buildNavItem(Icons.person_outline, 5),
+                  ],
                 ),
               ),
             ),
