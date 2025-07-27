@@ -5,7 +5,6 @@ import 'package:virtual_shop/widgets/favorite_stores.dart';
 import 'package:virtual_shop/widgets/promotion_widget.dart';
 import 'package:virtual_shop/widgets/shop_screenshots_widget.dart';
 import 'package:virtual_shop/widgets/story_page.dart';
-import 'package:virtual_shop/widgets/stats_widget.dart';
 
 class AllStoryPage extends StatelessWidget {
   const AllStoryPage({super.key});
@@ -13,12 +12,12 @@ class AllStoryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<Map<String, String>> stories = [
-      {'image': 'assets/images/demo1.jpg', 'username': '@User1'},
-      {'image': 'assets/images/demo2.jpg', 'username': '@User2'},
-      {'image': 'assets/images/demo3.jpg', 'username': '@User3'},
-      {'image': 'assets/images/demo4.jpg', 'username': '@User4'},
-      {'image': 'assets/images/demo5.jpg', 'username': '@User5'},
-      {'image': 'assets/images/demo5.jpg', 'username': '@User6'},
+      {'image': 'assets/images/profile.jpg', 'username': '@Aref'},
+      {'image': 'assets/images/profile3.jpg', 'username': '@Arik'},
+      {'image': 'assets/images/profile4.jpg', 'username': '@rahad'},
+      {'image': 'assets/images/profile6.jpg', 'username': '@raisul'},
+      {'image': 'assets/images/demo1.jpg', 'username': '@ahmed'},
+      {'image': 'assets/images/demo5.jpg', 'username': '@hossain'},
     ];
 
     return Scaffold(
@@ -172,9 +171,7 @@ class YourStoryItem extends StatelessWidget {
                   border: Border.all(color: Colors.grey, width: 2),
                 ),
                 child: const CircleAvatar(
-                  backgroundImage: NetworkImage(
-                    'https://i.pravatar.cc/150?img=0',
-                  ),
+                  backgroundImage: AssetImage('assets/images/profile2.jpg'),
                 ),
               ),
               Positioned(

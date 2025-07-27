@@ -6,9 +6,9 @@ class CategoriesWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<Map<String, dynamic>> categories = [
-      {'icon': 'assets/images/c1.png', 'name': 'Mobile'},
-      {'icon': 'assets/images/c2.png', 'name': 'Headphone'},
-      {'icon': 'assets/images/c3.png', 'name': 'Tablets'},
+      {'icon': 'assets/images/hoodie.png', 'name': 'Clothes'},
+      {'icon': 'assets/images/c2.png', 'name': 'Shoes'},
+      {'icon': 'assets/images/eyeglass.png', 'name': 'Eye Glass'},
       {'icon': 'assets/images/c1.png', 'name': 'Laptop'},
       {'icon': 'assets/images/c1.png', 'name': 'Speakers'},
       {'icon': Icons.more_horiz, 'name': 'More'},

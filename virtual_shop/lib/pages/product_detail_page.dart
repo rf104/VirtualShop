@@ -6,20 +6,30 @@ import 'package:virtual_shop/pages/chat_page.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
+  final Color? dominantColor;
 
-  const ProductDetailPage({super.key, required this.product});
+  const ProductDetailPage({
+    super.key,
+    required this.product,
+    this.dominantColor,
+  });
 
   @override
   State<ProductDetailPage> createState() => _ProductDetailPageState();
 }
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
-  Color _dominantColor = Colors.white;
+  late Color _dominantColor;
 
   @override
   void initState() {
     super.initState();
-    _updatePaletteGenerator();
+    if (widget.dominantColor != null) {
+      _dominantColor = widget.dominantColor!;
+    } else {
+      _dominantColor = Colors.white;
+      _updatePaletteGenerator();
+    }
   }
 
   Future<void> _updatePaletteGenerator() async {
@@ -27,9 +37,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       AssetImage(widget.product.image),
     );
     if (paletteGenerator.dominantColor != null) {
-      setState(() {
-        _dominantColor = paletteGenerator.dominantColor!.color;
-      });
+      if (mounted) {
+        setState(() {
+          _dominantColor = paletteGenerator.dominantColor!.color;
+        });
+      }
     }
   }
 
@@ -59,7 +71,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             tag: widget.product.image,
             child: Image.asset(
               widget.product.image,
-              fit: BoxFit.contain,
+              fit: BoxFit.cover,
               height: MediaQuery.of(context).size.height * 0.6,
               width: double.infinity,
             ),
@@ -149,6 +161,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
+                            color: Colors.black,
                           ),
                         ),
                       ],
@@ -165,11 +178,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         style: const TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
+                          color: Colors.black,
                         ),
                       ),
                     ),
                     Text(
-                      '\$${widget.product.price.toStringAsFixed(2)}',
+                      '৳${widget.product.price.toStringAsFixed(2)}',
                       style: const TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
@@ -190,7 +204,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   widget.product.description,
                   style: TextStyle(
                     fontSize: 16,
-                    color: Colors.grey[700],
+                    color: const Color.fromARGB(255, 41, 41, 41),
                     height: 1.5,
                   ),
                 ),
@@ -223,7 +237,13 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         color: Colors.grey[200],
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text('$label: $value', style: const TextStyle(fontSize: 12)),
+      child: Text(
+        '$label: $value',
+        style: const TextStyle(
+          fontSize: 12,
+          color: Color.fromARGB(255, 112, 112, 112),
+        ),
+      ),
     );
   }
 

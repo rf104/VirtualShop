@@ -1,9 +1,45 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
-import 'edit_profile_page.dart';
+import 'edit_profile_final.dart';
+import 'package:palette_generator/palette_generator.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  List<Color> _gradientColors = [const Color(0xFF8E9EAB), Colors.black];
+
+  @override
+  void initState() {
+    super.initState();
+    _updatePalette();
+  }
+
+  Future<void> _updatePalette() async {
+    final paletteGenerator = await PaletteGenerator.fromImageProvider(
+      const AssetImage('assets/images/profile6.jpg'),
+    );
+    if (paletteGenerator.colors.length >= 2) {
+      if (mounted) {
+        setState(() {
+          _gradientColors = [
+            paletteGenerator.colors.elementAt(0),
+            paletteGenerator.colors.elementAt(1),
+          ];
+        });
+      }
+    } else if (paletteGenerator.colors.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _gradientColors = [paletteGenerator.colors.first, Colors.black];
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,9 +49,9 @@ class ProfilePage extends StatelessWidget {
         children: [
           // Background with gradient
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF8E9EAB), Color(0xFFEEA47F)],
+                colors: _gradientColors,
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -34,6 +70,7 @@ class ProfilePage extends StatelessWidget {
                 _buildThreadsSection(),
                 const SizedBox(height: 30),
                 _buildMyPostsSection(context),
+                const SizedBox(height: 50),
               ],
             ),
           ),
@@ -49,7 +86,7 @@ class ProfilePage extends StatelessWidget {
       'assets/images/demo3.jpg',
       'assets/images/demo4.jpg',
       'assets/images/demo5.jpg',
-      'assets/images/hoodie.png',
+      'assets/images/couple.jpg',
     ];
 
     return Container(
@@ -126,7 +163,7 @@ class ProfilePage extends StatelessWidget {
           blendMode: BlendMode.dstIn,
           child: Image.asset(
             'assets/images/profile2.jpg',
-            height: MediaQuery.of(context).size.height * 0.4,
+            height: MediaQuery.of(context).size.height * 0.8,
             width: double.infinity,
             fit: BoxFit.cover,
           ),
@@ -138,16 +175,17 @@ class ProfilePage extends StatelessWidget {
           'Alice Eve',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 32,
+            fontSize: 42,
             fontWeight: FontWeight.bold,
           ),
         ),
         const SizedBox(height: 10),
         ElevatedButton.icon(
           onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const EditProfilePage()),
+            showDialog(
+              context: context,
+              builder: (context) => const EditProfileFinal(),
+              barrierDismissible: false,
             );
           },
           icon: const Icon(Icons.edit, color: Colors.white),
@@ -197,7 +235,7 @@ class ProfilePage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Threads',
+            'Summary',
             style: TextStyle(
               color: Colors.white,
               fontSize: 20,
@@ -209,10 +247,10 @@ class ProfilePage extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildStatCard('Sessions', '2.378'),
+                _buildStatCard('Purchases', '2000TK'),
                 _buildStatCard('Age', '32 y.o'),
-                _buildStatCard('Videos', '25.899'),
-                _buildStatCard('TV', 'A'),
+                _buildStatCard('Likes', '25,899'),
+                _buildStatCard('Photos', '6'),
               ],
             ),
           ),
