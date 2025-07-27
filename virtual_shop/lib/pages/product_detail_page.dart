@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/pages/chat_page.dart';
+import 'package:virtual_shop/pages/edit_product.dart';
 import 'package:virtual_shop/pages/virtual_try_on_page.dart';
 
 class ProductDetailPage extends StatefulWidget {
@@ -104,42 +105,73 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   Widget _buildTopBar(BuildContext context) {
     return Positioned(
       top: 40,
-      left: 20,
-      right: 20,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.black),
-            onPressed: () => Navigator.pop(context),
+      left: 0,
+      right: 0,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.65),
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.4),
+                  width: 1,
+                ),
+              ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.black),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit, color: Colors.black),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => EditProductPage(product: widget.product),
+                          ),
+                        );
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.favorite_border, color: Colors.black),
+                      onPressed: () {
+                        // TODO: Implement favorite functionality
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.voice_chat, color: Colors.black),
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const ChatPage()),
+                        );
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.share_outlined, color: Colors.black),
+                      onPressed: () {
+                        // TODO: Implement share functionality
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.favorite_border, color: Colors.black),
-                onPressed: () {
-                  // TODO: Implement favorite functionality
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.voice_chat, color: Colors.black),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const ChatPage()),
-                  );
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.share_outlined, color: Colors.black),
-                onPressed: () {
-                  // TODO: Implement share functionality
-                },
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
+    ),
     );
   }
 

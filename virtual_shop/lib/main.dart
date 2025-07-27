@@ -1,6 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:virtual_shop/pages/Profile.dart';
 import 'package:virtual_shop/pages/profile_page.dart';
 import 'package:virtual_shop/pages/edit_profile_page.dart';
 import 'package:virtual_shop/pages/landing_page.dart';

@@ -16,9 +16,9 @@ class Product {
     required this.rating,
     required this.price,
     required this.category,
-    required this.weather,
-    required this.temp,
-    required this.event,
+    this.weather = '',
+    this.temp = '',
+    this.event = '',
     required this.description,
     this.isLoved = false,
   });
