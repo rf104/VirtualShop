@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/pages/chat_page.dart';
-import 'package:virtual_shop/pages/virtual_try_on_page.dart'; // Ensure this import is present
+import 'package:virtual_shop/pages/virtual_try_on_page.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
@@ -282,7 +282,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 MaterialPageRoute(
                   builder: (context) => VirtualTryOnPage(
                     productImage: widget.product.image,
-                    productName: widget.product.name, // THIS LINE IS CRUCIAL
+                    productName: widget.product.name,
                   ),
                 ),
               );
