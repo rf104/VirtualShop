@@ -7,6 +7,7 @@ import 'package:virtual_shop/pages/cart_page.dart';
 import 'package:virtual_shop/pages/chat_assistant_page.dart';
 import 'package:virtual_shop/pages/notification_page.dart';
 import 'package:virtual_shop/pages/profile_page.dart';
+import 'package:oc_liquid_glass/oc_liquid_glass.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -109,26 +110,27 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       body: Stack(
         children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: _buildPage(_bottomNavIndex),
-          ),
+          _buildPage(_bottomNavIndex),
           Positioned(
             left: 10,
             right: 10,
             bottom: 20,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(30),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
+            child: OCLiquidGlassGroup(
+              settings: const OCLiquidGlassSettings(
+                blurRadiusPx: 5,
+                lightbandColor: Colors.greenAccent,
+                specAngle: 0.0,
+                specStrength: 0.0,
+              ),
+              child: OCLiquidGlass(
+                width: MediaQuery.of(context).size.width - 20,
+                height: 70,
+                borderRadius: 30,
+                color: Colors.black.withOpacity(0.2),
+                child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 20,
                     vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(30),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
