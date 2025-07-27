@@ -89,7 +89,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             tag: widget.product.image,
             child: Image.asset(
               widget.product.image,
-              fit: BoxFit.contain,
+              fit: BoxFit.cover,
               height: MediaQuery.of(context).size.height * 0.6,
               width: double.infinity,
             ),
@@ -205,7 +205,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       ),
                     ),
                     Text(
-                      '\৳${widget.product.price.toStringAsFixed(2)}',
+                      '৳${widget.product.price.toStringAsFixed(2)}',
                       style: const TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.bold,

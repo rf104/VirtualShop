@@ -47,11 +47,23 @@ class _AllProductPageState extends State<AllProductPage> {
       description:
           'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
     ),
+    Product(
+      name: 'Urban Explorer Outfit',
+      image: 'assets/images/demo5.jpg',
+      rating: 4.9,
+      price: 215.00,
+      category: 'Cozy Wear',
+      weather: 'Rainy',
+      temp: '16-22°C',
+      event: 'Promenade',
+      description:
+          'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
+    ),
   ];
 
-  String _selectedWeather = 'Rainy';
-  String _selectedTemp = '16-22°C';
-  String _selectedEvent = 'Promenade';
+  final String _selectedWeather = 'Rainy';
+  final String _selectedTemp = '16-22°C';
+  final String _selectedEvent = 'Promenade';
 
   @override
   Widget build(BuildContext context) {
@@ -253,7 +265,7 @@ class ProductCard extends StatelessWidget {
           children: [
             Flexible(
               child: Text(
-                '\৳${product.price.toStringAsFixed(2)}',
+                '৳${product.price.toStringAsFixed(2)}',
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   color: Colors.white,

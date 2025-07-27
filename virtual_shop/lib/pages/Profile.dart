@@ -12,7 +12,7 @@ class Profile extends StatelessWidget {
           child: Column(
             children: [
               // Top half image
-              Container(
+              SizedBox(
                 height: MediaQuery.of(context).size.height * 0.5,
                 width: double.infinity,
                 child: Image.asset(
