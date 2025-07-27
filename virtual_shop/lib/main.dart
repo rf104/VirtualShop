@@ -24,8 +24,8 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: lightTheme,
       darkTheme: darkTheme,
-      // home: const LandingPage(),
-      home : const ProfilePage(), 
+      home: const LandingPage(),
+      // home : const ProfilePage(), 
     );
   }
 }
