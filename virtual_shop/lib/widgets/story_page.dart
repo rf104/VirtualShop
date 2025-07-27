@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:oc_liquid_glass/oc_liquid_glass.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'dart:async';
 import 'package:virtual_shop/models/product.dart';
@@ -350,6 +351,12 @@ class _StoryState extends State<Story> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 GlassContainer(
+                  settings: OCLiquidGlassSettings(
+                    lightbandColor: Colors.greenAccent,
+                    specAngle: 0.0,
+                    specStrength: 0.0,
+                    blendPx: 10.0,
+                  ),
                   borderRadius: 20,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
