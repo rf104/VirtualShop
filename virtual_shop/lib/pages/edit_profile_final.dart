@@ -13,11 +13,21 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
   final _formKey = GlobalKey<FormState>();
   final ImagePicker _picker = ImagePicker();
   File? _selectedImage;
-  final TextEditingController _nameController = TextEditingController(text: 'Alice Eve');
-  final TextEditingController _emailController = TextEditingController(text: 'aliceeve@gmail.com');
-  final TextEditingController _phoneController = TextEditingController(text: '+8801305030143');
-  final TextEditingController _dobController = TextEditingController(text: '1995-06-15');
-  final TextEditingController _addressController = TextEditingController(text: '123 Main St, City');
+  final TextEditingController _nameController = TextEditingController(
+    text: 'Alice Eve',
+  );
+  final TextEditingController _emailController = TextEditingController(
+    text: 'aliceeve@gmail.com',
+  );
+  final TextEditingController _phoneController = TextEditingController(
+    text: '+8801305030143',
+  );
+  final TextEditingController _dobController = TextEditingController(
+    text: '1995-06-15',
+  );
+  final TextEditingController _addressController = TextEditingController(
+    text: '123 Main St, City',
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +81,9 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                           image: DecorationImage(
                             image: _selectedImage != null
                                 ? FileImage(_selectedImage!) as ImageProvider
-                                : const AssetImage('assets/images/profile2.jpg'),
+                                : const AssetImage(
+                                    'assets/images/profile2.jpg',
+                                  ),
                             fit: BoxFit.cover,
                           ),
                         ),
@@ -108,7 +120,9 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                               border: Border.all(color: Colors.white, width: 2),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFF6D9379).withOpacity(0.3),
+                                  color: const Color(
+                                    0xFF6D9379,
+                                  ).withOpacity(0.3),
                                   blurRadius: 8,
                                   spreadRadius: 1,
                                 ),
@@ -125,7 +139,7 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  
+
                   // Name Field
                   _buildTextField(
                     controller: _nameController,
@@ -133,7 +147,7 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                     icon: Icons.person,
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Email Field
                   _buildTextField(
                     controller: _emailController,
@@ -141,7 +155,7 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                     icon: Icons.email,
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Phone Field
                   _buildTextField(
                     controller: _phoneController,
@@ -158,7 +172,9 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                     onTap: () async {
                       final DateTime? picked = await showDatePicker(
                         context: context,
-                        initialDate: DateTime.tryParse(_dobController.text) ?? DateTime(1995),
+                        initialDate:
+                            DateTime.tryParse(_dobController.text) ??
+                            DateTime(1995),
                         firstDate: DateTime(1900),
                         lastDate: DateTime.now(),
                         builder: (context, child) {
@@ -170,7 +186,9 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                                 surface: Colors.white,
                                 onSurface: Colors.black,
                               ),
-                              dialogBackgroundColor: Colors.white,
+                              dialogTheme: DialogThemeData(
+                                backgroundColor: Colors.white,
+                              ),
                             ),
                             child: child!,
                           );
@@ -183,7 +201,7 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                     readOnly: true,
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Address Field
                   _buildTextField(
                     controller: _addressController,
@@ -191,7 +209,7 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                     icon: Icons.location_on,
                   ),
                   const SizedBox(height: 24),
-                  
+
                   // Buttons
                   Row(
                     children: [
@@ -203,7 +221,9 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                              side: BorderSide(
+                                color: Colors.grey.withOpacity(0.3),
+                              ),
                             ),
                           ),
                           child: const Text(
@@ -222,7 +242,9 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                           onPressed: () {
                             if (_formKey.currentState!.validate()) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Profile Updated Successfully')),
+                                const SnackBar(
+                                  content: Text('Profile Updated Successfully'),
+                                ),
                               );
                               Navigator.pop(context);
                             }
@@ -299,14 +321,13 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
           ),
           prefixIcon: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Icon(
-              icon, 
-              color: const Color(0xFF6D9379),
-              size: 22
-            ),
+            child: Icon(icon, color: const Color(0xFF6D9379), size: 22),
           ),
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
           floatingLabelStyle: const TextStyle(
             color: Color(0xFF6D9379),
             fontSize: 16,
@@ -316,10 +337,7 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(
-              color: Color(0xFF6D9379),
-              width: 2,
-            ),
+            borderSide: const BorderSide(color: Color(0xFF6D9379), width: 2),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),

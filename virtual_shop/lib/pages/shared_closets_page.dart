@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/pages/virtual_closet.dart';

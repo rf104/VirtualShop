@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:virtual_shop/pages/product_detail_page.dart';
 
 class BestSellerWidget extends StatelessWidget {
   const BestSellerWidget({super.key});
