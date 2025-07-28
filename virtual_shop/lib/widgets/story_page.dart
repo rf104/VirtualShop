@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:oc_liquid_glass/oc_liquid_glass.dart';
+import 'package:virtual_shop/widgets/glass_container.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'dart:async';
+
+import 'dart:ui';
 import 'package:virtual_shop/models/product.dart';
 
 import 'package:virtual_shop/pages/product_detail_page.dart';
-import 'package:virtual_shop/widgets/glass_container.dart';
+// import 'package:virtual_shop/widgets/glass_container.dart';
 
 Future<List<Color>> _generatePalette(ImageProvider imageProvider) async {
   final PaletteGenerator generator = await PaletteGenerator.fromImageProvider(
@@ -351,67 +354,91 @@ class _StoryState extends State<Story> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 GlassContainer(
+                  width: 56,
+                  height: 56,
+                  borderRadius: 20,
                   settings: OCLiquidGlassSettings(
-                    lightbandColor: Colors.greenAccent,
+                    blendPx: 150,
+                    lightbandColor: _allColors.isNotEmpty
+                        ? _allColors[0]
+                        : Colors.greenAccent,
                     specAngle: 0.0,
                     specStrength: 0.0,
-                    blendPx: 10.0,
                   ),
-                  borderRadius: 20,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 15.0,
-                      horizontal: 8.0,
+                  child: GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        products[selectedProductIndex].isLoved =
+                            !products[selectedProductIndex].isLoved;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Colors.transparent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        products[selectedProductIndex].isLoved
+                            ? Icons.favorite
+                            : Icons.favorite_border,
+                        color: products[selectedProductIndex].isLoved
+                            ? Colors.redAccent
+                            : Colors.white,
+                        size: 28,
+                      ),
                     ),
-                    child: Column(
-                      children: [
-                        GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              products[selectedProductIndex].isLoved =
-                                  !products[selectedProductIndex].isLoved;
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Image.asset(
-                              products[selectedProductIndex].isLoved
-                                  ? 'assets/images/love.png'
-                                  : 'assets/images/unlove.png',
-                              width: 24,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 15),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.asset(
-                            'assets/images/demo2.jpg',
-                            width: 40,
-                            height: 40,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        const SizedBox(height: 15),
-                        GestureDetector(
-                          onTap: () {},
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Image.asset(
-                              'assets/images/cart.png',
-                              width: 24,
-                            ),
-                          ),
-                        ),
-                      ],
+                  ),
+                ),
+                const SizedBox(height: 15),
+                GlassContainer(
+                  width: 56,
+                  height: 56,
+                  borderRadius: 20,
+                  settings: OCLiquidGlassSettings(
+                    blendPx: 150,
+                    lightbandColor: _allColors.isNotEmpty
+                        ? _allColors[0]
+                        : Colors.greenAccent,
+                    specAngle: 0.0,
+                    specStrength: 0.0,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset(
+                      'assets/images/demo2.jpg',
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 15),
+                GlassContainer(
+                  width: 56,
+                  height: 56,
+                  borderRadius: 20,
+                  settings: OCLiquidGlassSettings(
+                    blendPx: 150,
+                    lightbandColor: _allColors.isNotEmpty
+                        ? _allColors[0]
+                        : Colors.greenAccent,
+                    specAngle: 0.0,
+                    specStrength: 0.0,
+                  ),
+                  child: GestureDetector(
+                    onTap: () {},
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Colors.transparent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.shopping_cart,
+                        color: Colors.white,
+                        size: 28,
+                      ),
                     ),
                   ),
                 ),

@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:virtual_shop/pages/all_product_page.dart';
 import 'package:virtual_shop/pages/all_story.dart';
@@ -7,7 +5,6 @@ import 'package:virtual_shop/pages/cart_page.dart';
 import 'package:virtual_shop/pages/chat_assistant_page.dart';
 import 'package:virtual_shop/pages/notification_page.dart';
 import 'package:virtual_shop/pages/profile_page.dart';
-import 'package:virtual_shop/pages/shared_closets_page.dart';
 import 'package:virtual_shop/widgets/glass_container.dart';
 
 class HomePage extends StatefulWidget {

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:math';
 
 class VirtualTryOnPage extends StatefulWidget {
   final String productImage;
