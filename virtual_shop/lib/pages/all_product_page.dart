@@ -59,6 +59,102 @@ class _AllProductPageState extends State<AllProductPage> {
       description:
           'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
     ),
+    Product(
+      name: 'Winter Shearling Jacket',
+      image: 'assets/images/hoodie.jpg',
+      rating: 4.1,
+      price: 120.00,
+      category: 'Cozy Wear',
+      weather: 'Rainy',
+      temp: '16-22°C',
+      event: 'Promenade',
+      description:
+          'Elevate your winter wardrobe with this luxurious white shearling jacket, paired with a chic black turtleneck and matching skirt. Perfect for a stylish day out, this outfit combines comfort and high fashion, ensuring you stay warm and turn heads wherever you go.',
+    ),
+    Product(
+      name: 'Casual Chic Ensemble',
+      image: 'assets/images/hat1.jpg',
+      rating: 4.1,
+      price: 85.50,
+      category: 'Regular Wear',
+      weather: 'Neutral',
+      temp: '16-22°C',
+      event: 'Promenade',
+      description:
+          'Step out in style with this casual chic ensemble featuring a trendy hat.',
+    ),
+    Product(
+      name: 'Urban Explorer Outfit',
+      image: 'assets/images/shoe.jpg',
+      rating: 4.9,
+      price: 215.00,
+      category: 'Cozy Wear',
+      weather: 'Rainy',
+      temp: '16-22°C',
+      event: 'Promenade',
+      description:
+          'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
+    ),
+    Product(
+      name: 'Urban Explorer Outfit',
+      image: 'assets/images/demo5.jpg',
+      rating: 4.9,
+      price: 215.00,
+      category: 'Cozy Wear',
+      weather: 'Rainy',
+      temp: '16-22°C',
+      event: 'Promenade',
+      description:
+          'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
+    ),
+    Product(
+      name: 'Winter Shearling Jacket',
+      image: 'assets/images/hoodie.jpg',
+      rating: 4.1,
+      price: 120.00,
+      category: 'Cozy Wear',
+      weather: 'Rainy',
+      temp: '16-22°C',
+      event: 'Promenade',
+      description:
+          'Elevate your winter wardrobe with this luxurious white shearling jacket, paired with a chic black turtleneck and matching skirt. Perfect for a stylish day out, this outfit combines comfort and high fashion, ensuring you stay warm and turn heads wherever you go.',
+    ),
+    Product(
+      name: 'Casual Chic Ensemble',
+      image: 'assets/images/hat1.jpg',
+      rating: 4.1,
+      price: 85.50,
+      category: 'Regular Wear',
+      weather: 'Neutral',
+      temp: '16-22°C',
+      event: 'Promenade',
+      description:
+          'Step out in style with this casual chic ensemble featuring a trendy hat.',
+    ),
+    Product(
+      name: 'Urban Explorer Outfit',
+      image: 'assets/images/shoe.jpg',
+      rating: 4.9,
+      price: 215.00,
+      category: 'Cozy Wear',
+      weather: 'Rainy',
+      temp: '16-22°C',
+      event: 'Promenade',
+      description:
+          'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
+    ),
+    Product(
+      name: 'Urban Explorer Outfit',
+      image: 'assets/images/demo5.jpg',
+      rating: 4.9,
+      price: 215.00,
+      category: 'Cozy Wear',
+      weather: 'Rainy',
+      temp: '16-22°C',
+      event: 'Promenade',
+      description:
+          'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
+    ),
   ];
 
   final String _selectedWeather = 'Rainy';

@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
+  
   
   
   flutter_svg: ^2.0.7
@@ -44,7 +46,6 @@ dependencies:
   flutter_signin_button: ^2.0.0
   google_sign_in: ^6.3.0
   palette_generator: ^0.3.3+7
-  liquid_glass_renderer: ^0.1.1-dev.9
   video_player: ^2.10.0
   image: ^4.1.0
   lottie: ^3.1.2
@@ -52,7 +53,9 @@ dependencies:
   google_generative_ai: ^0.2.2
   flutter_dotenv: ^5.2.1
   image_picker: ^1.1.2
-
+  google_fonts: ^6.2.1
+  mesh: ^0.5.0
+  oc_liquid_glass: 0.1.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
