@@ -7,7 +7,8 @@ import 'package:virtual_shop/pages/cart_page.dart';
 import 'package:virtual_shop/pages/chat_assistant_page.dart';
 import 'package:virtual_shop/pages/notification_page.dart';
 import 'package:virtual_shop/pages/profile_page.dart';
-import 'package:oc_liquid_glass/oc_liquid_glass.dart';
+import 'package:virtual_shop/pages/shared_closets_page.dart';
+import 'package:virtual_shop/widgets/glass_container.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -16,8 +17,21 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   int _bottomNavIndex = 0;
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   Widget _buildNavItem(IconData icon, int index) {
     bool isSelected = _bottomNavIndex == index;
@@ -28,7 +42,7 @@ class _HomePageState extends State<HomePage> {
         });
       },
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFFADFF2F) : Colors.transparent,
           shape: BoxShape.circle,
@@ -50,7 +64,7 @@ class _HomePageState extends State<HomePage> {
         clipBehavior: Clip.none,
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: isSelected ? const Color(0xFFADFF2F) : Colors.transparent,
               shape: BoxShape.circle,
@@ -89,13 +103,13 @@ class _HomePageState extends State<HomePage> {
         return const AllStoryPage(key: ValueKey('AllStoryPage'));
       case 1:
         return const AllProductPage(key: ValueKey('AllProductPage'));
-      case 2:
-        return const CartPage(key: ValueKey('CartPage'));
       case 3:
-        return const ChatAssistantPage(key: ValueKey('ChatAssistantPage'));
+        return const CartPage(key: ValueKey('CartPage'));
       case 4:
-        return const NotificationPage(key: ValueKey('NotificationPage'));
+        return const ChatAssistantPage(key: ValueKey('ChatAssistantPage'));
       case 5:
+        return const NotificationPage(key: ValueKey('NotificationPage'));
+      case 6:
         return const ProfilePage(key: ValueKey('ProfilePage'));
       default:
         return const Center(
@@ -115,34 +129,26 @@ class _HomePageState extends State<HomePage> {
             left: 10,
             right: 10,
             bottom: 20,
-            child: OCLiquidGlassGroup(
-              settings: const OCLiquidGlassSettings(
-                blurRadiusPx: 5,
-                lightbandColor: Colors.greenAccent,
-                specAngle: 0.0,
-                specStrength: 0.0,
-              ),
-              child: OCLiquidGlass(
-                width: MediaQuery.of(context).size.width - 20,
-                height: 70,
-                borderRadius: 30,
-                color: Colors.black.withOpacity(0.2),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildNavItem(Icons.home, 0),
-                      _buildNavItem(Icons.checkroom, 1),
-                      _buildNavItemWithBadge(Icons.shopping_bag_outlined, 2, 4),
-                      _buildNavItem(Icons.bubble_chart, 3),
-                      _buildNavItem(Icons.notifications, 4),
-                      _buildNavItem(Icons.person_outline, 5),
-                    ],
-                  ),
+            child: GlassContainer(
+              width: MediaQuery.of(context).size.width - 20,
+              height: 70,
+              borderRadius: 30,
+              color: Colors.black.withOpacity(0.2),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildNavItem(Icons.home, 0),
+                    _buildNavItem(Icons.checkroom, 1),
+                    _buildNavItemWithBadge(Icons.shopping_bag_outlined, 3, 4),
+                    _buildNavItem(Icons.bubble_chart, 4),
+                    _buildNavItem(Icons.notifications, 5),
+                    _buildNavItem(Icons.person_outline, 6),
+                  ],
                 ),
               ),
             ),

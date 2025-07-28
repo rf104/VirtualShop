@@ -47,7 +47,7 @@ class _PromotionWidgetState extends State<PromotionWidget> {
 
   Future<void> _updateAllPalettes() async {
     if (!mounted) return;
-    
+
     for (int i = 0; i < _promotions.length; i++) {
       final provider = AssetImage(_promotions[i]['image']!);
       try {
@@ -57,7 +57,8 @@ class _PromotionWidgetState extends State<PromotionWidget> {
         );
         if (mounted) {
           setState(() {
-            _dominantColors[i] = paletteGenerator.dominantColor?.color ?? Colors.grey[900]!;
+            _dominantColors[i] =
+                paletteGenerator.dominantColor?.color ?? Colors.grey[900]!;
           });
         }
       } catch (e) {

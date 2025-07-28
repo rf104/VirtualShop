@@ -521,34 +521,36 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
                                   ),
                                 );
                               },
-                          child: Column(
-                            key: ValueKey<int>(currentPage),
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                currentPage == 0
-                                    ? 'Welcome back!\nSign in to continue'
-                                    : 'Ready to dive in?\nCreate your account',
-                                style: const TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                  height: 1.2,
+                          child: SingleChildScrollView(
+                            child: Column(
+                              key: ValueKey<int>(currentPage),
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  currentPage == 0
+                                      ? 'Welcome back!\nSign in to continue'
+                                      : 'Ready to dive in?\nCreate your account',
+                                  style: const TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                    height: 1.2,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                currentPage == 0
-                                    ? 'Sign in to enjoy the best shopping experience'
-                                    : 'Join us today and start your shopping journey',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.white.withOpacity(0.7),
-                                  height: 1.4,
+                                const SizedBox(height: 16),
+                                Text(
+                                  currentPage == 0
+                                      ? 'Sign in to enjoy the best shopping experience'
+                                      : 'Join us today and start your shopping journey',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.white.withOpacity(0.7),
+                                    height: 1.4,
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
