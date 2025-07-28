@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:virtual_shop/pages/checkout_page.dart'; // Import the CheckoutPage
 
 class CartPage extends StatefulWidget {
   const CartPage({super.key});
@@ -130,7 +131,7 @@ class _CartPageState extends State<CartPage> {
                   onPressed: () => _decrementQuantity(index),
                 ),
                 Text(
-                  '\৳${item['quantity']}',
+                  '৳${item['quantity']}',
                   style: const TextStyle(color: Colors.white, fontSize: 16),
                 ),
                 IconButton(
@@ -230,7 +231,20 @@ class _CartPageState extends State<CartPage> {
           ),
           const SizedBox(height: 20),
           ElevatedButton(
-            onPressed: () {},
+            onPressed: () {
+              // Navigate to the CheckoutPage and pass the current cart items, subtotal, shipping, and total
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => CheckoutPage(
+                    cartItems: _cartItems,
+                    subtotal: subtotal, // Pass subtotal
+                    shipping: shipping, // Pass shipping
+                    total: total, // Pass total
+                  ),
+                ),
+              );
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFADFF2F),
               padding: const EdgeInsets.symmetric(horizontal: 80, vertical: 15),
