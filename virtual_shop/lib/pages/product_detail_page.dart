@@ -76,7 +76,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           Container(
             decoration: BoxDecoration(
               gradient: RadialGradient(
-                colors: [_dominantColor.withOpacity(0.5), Colors.white],
+                colors: [_dominantColor.withOpacity(0.9), Colors.white],
                 center: Alignment.topCenter,
                 radius: 1.5,
                 stops: const [0.0, 1.0],
@@ -86,7 +86,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Container(color: Colors.white.withOpacity(0.1)),
+              child: Container(color: _dominantColor.withOpacity(0.8)),
             ),
           ),
           Hero(
@@ -361,7 +361,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                                   style: const TextStyle(
                                     fontSize: 28,
                                     fontWeight: FontWeight.bold,
-                                    color: Color(0xFFADFF2F),
+                                    color: Color.fromARGB(255, 99, 160, 2),
                                   ),
                                 ),
                               ],
