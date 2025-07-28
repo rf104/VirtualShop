@@ -28,6 +28,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   final List<String> _comments = [];
   final TextEditingController _commentController = TextEditingController();
 
+  double rf(BuildContext context, double size) {
+    double baseWidth = 375.0;
+    double screenWidth = MediaQuery.of(context).size.width;
+    return size * (screenWidth / baseWidth);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -300,23 +306,23 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                                 Text(
                                   widget.product.category,
                                   style: TextStyle(
-                                    fontSize: 16,
+                                    fontSize: rf(context, 16),
                                     color: Colors.grey[600],
                                   ),
                                 ),
                                 Row(
                                   children: [
-                                    const Icon(
+                                    Icon(
                                       Icons.star,
                                       color: Colors.amber,
-                                      size: 20,
+                                      size: rf(context, 20),
                                     ),
-                                    const SizedBox(width: 4),
+                                    SizedBox(width: rf(context, 4)),
                                     Text(
                                       widget.product.rating.toString(),
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 16,
+                                        fontSize: rf(context, 16),
                                         color: Colors.black,
                                       ),
                                     ),
@@ -349,8 +355,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                                 Expanded(
                                   child: Text(
                                     widget.product.name,
-                                    style: const TextStyle(
-                                      fontSize: 28,
+                                    style: TextStyle(
+                                      fontSize: rf(context, 28),
                                       fontWeight: FontWeight.bold,
                                       color: Colors.black,
                                     ),
@@ -358,10 +364,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                                 ),
                                 Text(
                                   '৳${widget.product.price.toStringAsFixed(2)}',
-                                  style: const TextStyle(
-                                    fontSize: 28,
+                                  style: TextStyle(
+                                    fontSize: rf(context, 28),
                                     fontWeight: FontWeight.bold,
-                                    color: Color.fromARGB(255, 99, 160, 2),
+                                    color: const Color.fromARGB(
+                                      255,
+                                      99,
+                                      160,
+                                      2,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -387,20 +398,25 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
+                                Text(
                                   'Description',
                                   style: TextStyle(
-                                    fontSize: 18,
+                                    fontSize: rf(context, 18),
                                     fontWeight: FontWeight.bold,
                                     color: Colors.black,
                                   ),
                                 ),
-                                const SizedBox(height: 8),
+                                SizedBox(height: rf(context, 8)),
                                 Text(
                                   widget.product.description,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    color: Color.fromARGB(255, 41, 41, 41),
+                                  style: TextStyle(
+                                    fontSize: rf(context, 16),
+                                    color: const Color.fromARGB(
+                                      255,
+                                      41,
+                                      41,
+                                      41,
+                                    ),
                                     height: 1.5,
                                   ),
                                 ),
@@ -445,9 +461,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       ),
       child: Text(
         '$label: $value',
-        style: const TextStyle(
-          fontSize: 12,
-          color: Color.fromARGB(255, 112, 112, 112),
+        style: TextStyle(
+          fontSize: rf(context, 12),
+          color: const Color.fromARGB(255, 112, 112, 112),
         ),
       ),
     );
@@ -476,9 +492,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 borderRadius: BorderRadius.circular(30),
               ),
             ),
-            child: const Text(
+            child: Text(
               'Virtual Try On',
-              style: TextStyle(fontSize: 16, color: Colors.white),
+              style: TextStyle(fontSize: rf(context, 16), color: Colors.white),
             ),
           ),
         ),
@@ -495,9 +511,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 borderRadius: BorderRadius.circular(30),
               ),
             ),
-            child: const Text(
+            child: Text(
               'Add to cart',
-              style: TextStyle(fontSize: 16, color: Colors.black),
+              style: TextStyle(fontSize: rf(context, 16), color: Colors.black),
             ),
           ),
         ),
@@ -509,11 +525,14 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Comments',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontSize: rf(context, 18),
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: rf(context, 16)),
         Row(
           children: [
             Expanded(
@@ -541,12 +560,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        SizedBox(height: rf(context, 16)),
         _comments.isEmpty
             ? Center(
                 child: Text(
                   'No comments yet. Be the first to share your thoughts!',
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  style: TextStyle(
+                    fontSize: rf(context, 14),
+                    color: Colors.grey[600],
+                  ),
                   textAlign: TextAlign.center,
                 ),
               )
@@ -565,8 +587,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       padding: const EdgeInsets.all(12.0),
                       child: Text(
                         _comments[index],
-                        style: const TextStyle(
-                          fontSize: 15,
+                        style: TextStyle(
+                          fontSize: rf(context, 15),
                           color: Colors.black87,
                         ),
                       ),
@@ -574,7 +596,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   );
                 },
               ),
-        const SizedBox(height: 24),
+        SizedBox(height: rf(context, 24)),
       ],
     );
   }
