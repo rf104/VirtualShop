@@ -48,8 +48,8 @@ class _AllProductPageState extends State<AllProductPage> {
           'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
     ),
     Product(
-      name: 'Urban Explorer Outfit',
-      image: 'assets/images/demo5.jpg',
+      name: 'Classic glasses',
+      image: 'assets/images/glass1.jpg',
       rating: 4.9,
       price: 215.00,
       category: 'Cozy Wear',
@@ -57,7 +57,7 @@ class _AllProductPageState extends State<AllProductPage> {
       temp: '16-22°C',
       event: 'Promenade',
       description:
-          'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
+          'Elevate your style with these classic glasses, perfect for any occasion. Their timeless design and high-quality material make them a must-have accessory for those who appreciate both fashion and functionality.',
     ),
     Product(
       name: 'Winter Shearling Jacket',
@@ -84,8 +84,8 @@ class _AllProductPageState extends State<AllProductPage> {
           'Step out in style with this casual chic ensemble featuring a trendy hat.',
     ),
     Product(
-      name: 'Urban Explorer Outfit',
-      image: 'assets/images/shoe.jpg',
+      name: 'Premimum Glass',
+      image: 'assets/images/glass.jpg',
       rating: 4.9,
       price: 215.00,
       category: 'Cozy Wear',
@@ -93,7 +93,7 @@ class _AllProductPageState extends State<AllProductPage> {
       temp: '16-22°C',
       event: 'Promenade',
       description:
-          'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
+          'Elevate your style with this premium glass, perfect for any occasion. Its sleek design and high-quality material make it a must-have accessory for those who appreciate both fashion and functionality.',
     ),
     Product(
       name: 'Urban Explorer Outfit',
@@ -180,6 +180,7 @@ class _AllProductPageState extends State<AllProductPage> {
               // _buildFilterChips(),
               const SizedBox(height: 20),
               Expanded(child: _buildProductGrid()),
+              const SizedBox(height: 20),
             ],
           ),
         ),

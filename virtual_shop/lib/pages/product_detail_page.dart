@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:oc_liquid_glass/oc_liquid_glass.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/pages/chat_page.dart';
@@ -111,69 +112,148 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       right: 0,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(15),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.65),
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.4),
-                  width: 1,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Back button
+              GlassContainer(
+                borderRadius: 20.0,
+                width: 40,
+                height: 40,
+                settings: OCLiquidGlassSettings(
+                  blendPx: 10.0,
+                  lightbandColor: _dominantColor,
+                  specAngle: 0.0,
+                  specStrength: 0.0,
+                ),
+                color: Colors.white.withOpacity(0.4),
+                child: Center(
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.black),
+                    onPressed: () => Navigator.pop(context),
+                    splashRadius: 22,
+                  ),
                 ),
               ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.black),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.edit, color: Colors.black),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => EditProductPage(product: widget.product),
-                          ),
-                        );
-                      },
+              Row(
+                children: [
+                  // Edit button
+                  GlassContainer(
+                    borderRadius: 20.0,
+                    width: 40,
+                    height: 40,
+                    color: Colors.white.withOpacity(0.4),
+                    settings: OCLiquidGlassSettings(
+                      blendPx: 10.0,
+                      lightbandColor: _dominantColor,
+                      specAngle: 0.0,
+                      specStrength: 0.0,
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.favorite_border, color: Colors.black),
-                      onPressed: () {
-                        // TODO: Implement favorite functionality
-                      },
+                    child: Center(
+                      child: IconButton(
+                        icon: const Icon(Icons.edit, color: Colors.black),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  EditProductPage(product: widget.product),
+                            ),
+                          );
+                        },
+                        splashRadius: 22,
+                      ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.voice_chat, color: Colors.black),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => const ChatPage()),
-                        );
-                      },
+                  ),
+                  const SizedBox(width: 6),
+                  // Favorite button
+                  GlassContainer(
+                    borderRadius: 20.0,
+                    width: 40,
+                    height: 40,
+                    color: Colors.white.withOpacity(0.4),
+                    settings: OCLiquidGlassSettings(
+                      blendPx: 10.0,
+                      lightbandColor: _dominantColor,
+                      specAngle: 0.0,
+                      specStrength: 0.0,
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.share_outlined, color: Colors.black),
-                      onPressed: () {
-                        // TODO: Implement share functionality
-                      },
+                    child: Center(
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.favorite_border,
+                          color: Colors.black,
+                        ),
+                        onPressed: () {
+                          // TODO: Implement favorite functionality
+                        },
+                        splashRadius: 22,
+                      ),
                     ),
-                  ],
-                ),
-              ],
-            ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Voice chat button
+                  GlassContainer(
+                    borderRadius: 20.0,
+                    width: 40,
+                    height: 40,
+                    color: Colors.white.withOpacity(0.4),
+                    settings: OCLiquidGlassSettings(
+                      blendPx: 10.0,
+                      lightbandColor: _dominantColor,
+                      specAngle: 0.0,
+                      specStrength: 0.0,
+                    ),
+                    child: Center(
+                      child: IconButton(
+                        icon: const Icon(Icons.voice_chat, color: Colors.black),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ChatPage(),
+                            ),
+                          );
+                        },
+                        splashRadius: 22,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Share button
+                  GlassContainer(
+                    borderRadius: 20.0,
+                    width: 40,
+                    height: 40,
+                    color: Colors.white.withOpacity(0.4),
+                    settings: OCLiquidGlassSettings(
+                      blendPx: 10.0,
+                      lightbandColor: _dominantColor,
+                      specAngle: 0.0,
+                      specStrength: 0.0,
+                    ),
+                    child: Center(
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.share_outlined,
+                          color: Colors.black,
+                        ),
+                        onPressed: () {
+                          // TODO: Implement share functionality
+                        },
+                        splashRadius: 22,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
-    ),
     );
   }
 
@@ -185,6 +265,14 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       builder: (context, scrollController) {
         return GlassContainer(
           borderRadius: 30.0,
+          settings: OCLiquidGlassSettings(
+            blendPx: 150,
+            blurRadiusPx: 50,
+            lightbandColor: _dominantColor,
+            specAngle: 0.0,
+            specStrength: 0.0,
+            lightbandWidthPx: 20.0,
+          ),
 
           child: Container(
             padding: const EdgeInsets.all(24),
