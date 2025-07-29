@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:virtual_shop/pages/home_page.dart';
 import 'package:virtual_shop/utils/theme.dart';
+import 'package:virtual_shop/pages/seller_dashboard_page.dart';
 
 import 'firebase_options.dart';
 
@@ -20,7 +21,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: lightTheme,
       darkTheme: darkTheme,
-      home: const HomePage(),
+      home: const SellerDashboardPage(),
     );
   }
 }
