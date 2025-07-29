@@ -144,10 +144,10 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    const Text(
+                    Text(
                       "Hi, Urban Drift",
                       style: TextStyle(
-                        fontSize: 30,
+                        fontSize: MediaQuery.of(context).size.width * 0.075, // Responsive font size
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
@@ -198,19 +198,22 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                 children: [
                   Row(
                     children: [
-                      const Text(
-                        "Analytics",
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                      Expanded(
+                        child: Text(
+                          "Analytics",
+                          style: TextStyle(
+                            fontSize: MediaQuery.of(context).size.width * 0.05, // Responsive font size
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const Spacer(),
+                      const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
+                          horizontal: 12,
+                          vertical: 8,
                         ),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
@@ -230,16 +233,16 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                           icon: const Icon(
                             Icons.keyboard_arrow_down,
                             color: Colors.white,
-                            size: 20,
+                            size: 18,
                           ),
                           dropdownColor: Colors.grey[800],
                           value: _selectedPeriod,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
-                            fontSize: 14,
+                            fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
                           ),
-                          items: const [
+                          items: [
                             DropdownMenuItem(
                               value: "Monthly",
                               child: Text(
@@ -247,7 +250,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
-                                  fontSize: 14,
+                                  fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
                                 ),
                               ),
                             ),
@@ -258,7 +261,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
-                                  fontSize: 14,
+                                  fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
                                 ),
                               ),
                             ),
@@ -269,7 +272,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
-                                  fontSize: 14,
+                                  fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
                                 ),
                               ),
                             ),
@@ -309,15 +312,18 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                           size: 20,
                         ),
                         const SizedBox(width: 12),
-                        Text(
-                          "Showing $_selectedPeriod Analytics",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
+                        Expanded(
+                          child: Text(
+                            "Showing $_selectedPeriod Analytics",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const Spacer(),
+                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 8,
@@ -329,10 +335,10 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                           ),
                           child: Text(
                             _selectedPeriod.toUpperCase(),
-                            style: const TextStyle(
+                            style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
-                              fontSize: 10,
+                              fontSize: MediaQuery.of(context).size.width * 0.025, // Responsive font size
                             ),
                           ),
                         ),
@@ -342,7 +348,6 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                   const SizedBox(height: 20),
                   // Analytics Cards
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       _AnalyticsCard(
                         key: const ValueKey('analytics1'),
@@ -352,6 +357,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                         label: "Transactions success",
                         up: true,
                       ),
+                      const SizedBox(width: 8),
                       _AnalyticsCard(
                         key: const ValueKey('analytics2'),
                         color: const Color(0xff764ba2),
@@ -360,6 +366,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                         label: "Response rate",
                         up: _selectedPeriod != "Daily",
                       ),
+                      const SizedBox(width: 8),
                       _AnalyticsCard(
                         key: const ValueKey('analytics3'),
                         color: const Color(0xff4facfe),
@@ -393,21 +400,27 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        "$_selectedPeriod Earnings",
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 22,
-                          color: Colors.white,
+                      Expanded(
+                        child: Text(
+                          "$_selectedPeriod Earnings",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: MediaQuery.of(context).size.width * 0.055, // Responsive font size
+                            color: Colors.white,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const Spacer(),
-                      Text(
-                        _getTotalEarnings(),
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xff667eea),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _getTotalEarnings(),
+                          style: TextStyle(
+                            fontSize: MediaQuery.of(context).size.width * 0.06, // Responsive font size
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xff667eea),
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -417,7 +430,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                     "Total balance",
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.7),
-                      fontSize: 14,
+                      fontSize: MediaQuery.of(context).size.width * 0.035, // Responsive font size
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -443,17 +456,28 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                               children: [
                                 Row(
                                   children: [
-                                    Text(
-                                      "Earning in ",
-                                      style: TextStyle(
-                                        color: Colors.white.withOpacity(0.8),
-                                      ),
-                                    ),
-                                    Text(
-                                      _getPeriodText(),
-                                      style: const TextStyle(
-                                        color: Color(0xff667eea),
-                                        fontWeight: FontWeight.w600,
+                                    Expanded(
+                                      child: Row(
+                                        children: [
+                                          Text(
+                                            "Earning in ",
+                                            style: TextStyle(
+                                              color: Colors.white.withOpacity(0.8),
+                                              fontSize: MediaQuery.of(context).size.width * 0.035, // Responsive font size
+                                            ),
+                                          ),
+                                          Flexible(
+                                            child: Text(
+                                              _getPeriodText(),
+                                              style: TextStyle(
+                                                color: const Color(0xff667eea),
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: MediaQuery.of(context).size.width * 0.035, // Responsive font size
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                     const Icon(
@@ -467,21 +491,27 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    Text(
-                                      _getPeriodEarnings(),
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 24,
-                                        color: Colors.white,
+                                    Expanded(
+                                      child: Text(
+                                        _getPeriodEarnings(),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: MediaQuery.of(context).size.width * 0.06, // Responsive font size
+                                          color: Colors.white,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    Text(
-                                      _getEarningsChange(),
-                                      style: const TextStyle(
-                                        color: Color(0xff38A169),
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
+                                    Flexible(
+                                      child: Text(
+                                        _getEarningsChange(),
+                                        style: TextStyle(
+                                          color: const Color(0xff38A169),
+                                          fontSize: MediaQuery.of(context).size.width * 0.035, // Responsive font size
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ],
@@ -491,7 +521,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                   "Tap to view detailed analytics",
                                   style: TextStyle(
                                     color: Colors.white.withOpacity(0.5),
-                                    fontSize: 12,
+                                    fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
                                   ),
                                 ),
                               ],
@@ -543,16 +573,19 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                   ),
                   const SizedBox(height: 20),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        "Recent Transaction",
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                          color: Colors.white,
+                      Expanded(
+                        child: Text(
+                          "Recent Transaction",
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: MediaQuery.of(context).size.width * 0.045, // Responsive font size
+                            color: Colors.white,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      const SizedBox(width: 8),
                       GestureDetector(
                         onTap: () {
                           _showAllTransactions(context);
@@ -566,14 +599,14 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                             color: const Color(0xff667eea),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Row(
+                          child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
                                 "See all",
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 12,
+                                  fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -617,12 +650,12 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 "Payment from Ibnu",
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
-                                  fontSize: 16,
+                                  fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -630,18 +663,18 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 "Friday, 21 March",
                                 style: TextStyle(
                                   color: Colors.white.withOpacity(0.7),
-                                  fontSize: 13,
+                                  fontSize: MediaQuery.of(context).size.width * 0.0325, // Responsive font size
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        const Text(
+                        Text(
                           "৳2,000",
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Color(0xff38A169),
+                            fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
+                            color: const Color(0xff38A169),
                           ),
                         ),
                       ],
@@ -675,12 +708,12 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 "Payment from Sarah",
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
-                                  fontSize: 16,
+                                  fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -688,18 +721,18 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 "Thursday, 20 March",
                                 style: TextStyle(
                                   color: Colors.white.withOpacity(0.7),
-                                  fontSize: 13,
+                                  fontSize: MediaQuery.of(context).size.width * 0.0325, // Responsive font size
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        const Text(
+                        Text(
                           "৳1,500",
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Color(0xff38A169),
+                            fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
+                            color: const Color(0xff38A169),
                           ),
                         ),
                       ],
@@ -752,7 +785,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                           ),
                         ),
                         const SizedBox(width: 16),
-                        const Expanded(
+                        Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -760,7 +793,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 "My Products",
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 20,
+                                  fontSize: MediaQuery.of(context).size.width * 0.05, // Responsive font size
                                   color: Colors.white,
                                 ),
                               ),
@@ -768,7 +801,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 "Manage your inventory",
                                 style: TextStyle(
                                   color: Colors.grey,
-                                  fontSize: 14,
+                                  fontSize: MediaQuery.of(context).size.width * 0.035, // Responsive font size
                                 ),
                               ),
                             ],
@@ -783,11 +816,11 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                             color: const Color(0xff667eea),
                             borderRadius: BorderRadius.circular(20),
                           ),
-                          child: const Text(
+                          child: Text(
                             "10",
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                              fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
                               color: Colors.white,
                             ),
                           ),
@@ -829,7 +862,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                           ),
                         ],
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
@@ -837,12 +870,12 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                             color: Colors.white,
                             size: 24,
                           ),
-                          SizedBox(width: 12),
+                          const SizedBox(width: 12),
                           Text(
                             "Add New Product",
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              fontSize: 16,
+                              fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
                               color: Colors.white,
                             ),
                           ),
@@ -872,47 +905,53 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xffFFD700), Color(0xffFFA500)],
-                              ),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.star_rounded,
-                              color: Colors.white,
-                              size: 24,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          const Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "Recent Reviews",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 20,
-                                  color: Colors.white,
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xffFFD700), Color(0xffFFA500)],
                                 ),
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              Text(
-                                "Customer feedback",
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 14,
-                                ),
+                              child: const Icon(
+                                Icons.star_rounded,
+                                color: Colors.white,
+                                size: 24,
                               ),
-                            ],
-                          ),
-                        ],
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: const Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "Recent Reviews",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 20,
+                                      color: Colors.white,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    "Customer feedback",
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 14,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
+                      const SizedBox(width: 8),
                       GestureDetector(
                         onTap: () {
                           _showAllReviews(context);
@@ -969,39 +1008,41 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                             children: [
                               Row(
                                 children: [
-                                  const Text(
+                                  Text(
                                     "4.8",
                                     style: TextStyle(
                                       color: Colors.white,
-                                      fontSize: 32,
+                                      fontSize: MediaQuery.of(context).size.width * 0.07, // Responsive font size
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: List.generate(
-                                          5,
-                                          (index) => Icon(
-                                            index < 5
-                                                ? Icons.star_rounded
-                                                : Icons.star_border_rounded,
-                                            color: const Color(0xffFFD700),
-                                            size: 16,
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: List.generate(
+                                            5,
+                                            (index) => Icon(
+                                              index < 5
+                                                  ? Icons.star_rounded
+                                                  : Icons.star_border_rounded,
+                                              color: const Color(0xffFFD700),
+                                              size: 14,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      Text(
-                                        "Based on 1,247 reviews",
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.7),
-                                          fontSize: 12,
+                                        Text(
+                                          "Based on 1,247 reviews",
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(0.7),
+                                            fontSize: 11,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1010,18 +1051,18 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
+                            horizontal: 8,
+                            vertical: 4,
                           ),
                           decoration: BoxDecoration(
                             color: const Color(0xff38A169),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(6),
                           ),
-                          child: const Text(
+                          child: Text(
                             "Excellent",
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 12,
+                              fontSize: MediaQuery.of(context).size.width * 0.025, // Responsive font size
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -1049,56 +1090,11 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final double responsiveFontSize = MediaQuery.of(context).size.width * 0.03;
+    
     return Scaffold(
-      backgroundColor: Colors.black, // Dark theme background
-      body: Stack(
-        children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: _buildPage(_selectedTab),
-          ),
-          // Bottom navigation bar
-          Positioned(
-            left: 10,
-            right: 10,
-            bottom: 20,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(30),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildNavItem(Icons.home, 0), // Home/Stories
-                      _buildNavItem(Icons.checkroom, 1), // All Products
-                      _buildNavItemWithBadge(
-                        Icons.shopping_bag_outlined,
-                        2,
-                        4,
-                      ), // Cart
-                      _buildNavItem(Icons.bubble_chart, 3), // Chat Assistant
-                      _buildNavItem(Icons.notifications, 4), // Notifications
-                      _buildNavItem(
-                        Icons.store,
-                        5,
-                      ), // Seller Dashboard (changed from person_outline)
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      backgroundColor: Colors.black,
+      body: Stack(children: [_buildSellerDashboard()]),
     );
   }
 
@@ -1132,37 +1128,40 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
               // Header
               Padding(
                 padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    const Text(
-                      "All Transactions",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xff38A169),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        _selectedPeriod.toUpperCase(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                child:                   Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          "All Transactions",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: MediaQuery.of(context).size.width * 0.05, // Responsive font size
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xff38A169),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _selectedPeriod.toUpperCase(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
               ),
               // Transactions List
               Expanded(
@@ -1221,37 +1220,40 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
               // Header
               Padding(
                 padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    const Text(
-                      "All Reviews",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xffFFD700),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        "4.8 RATING",
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                child:                   Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          "All Reviews",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: MediaQuery.of(context).size.width * 0.05, // Responsive font size
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xffFFD700),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Text(
+                          "4.8",
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
               ),
               // Reviews List
               Expanded(
@@ -1308,53 +1310,56 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
               // Header
               Padding(
                 padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
+                child:                   Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[800],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.arrow_back_ios,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: const Text(
+                          "Review Details",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
-                          color: Colors.grey[800],
-                          borderRadius: BorderRadius.circular(8),
+                          color: _getRatingColor(review['rating']),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(
-                          Icons.arrow_back_ios,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    const Text(
-                      "Review Details",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _getRatingColor(review['rating']),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        "${review['rating']}/5",
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                        child: Text(
+                          "${review['rating']}/5",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
               ),
               // Review Details Content
               Expanded(
@@ -1476,18 +1481,21 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                   size: 20,
                                 ),
                                 const SizedBox(width: 8),
-                                const Text(
-                                  "Customer Review",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
+                                Expanded(
+                                  child: const Text(
+                                    "Customer Review",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                                const Spacer(),
+                                const SizedBox(width: 8),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
+                                    horizontal: 6,
                                     vertical: 4,
                                   ),
                                   decoration: BoxDecoration(
@@ -1504,16 +1512,16 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                             ? Icons.verified
                                             : Icons.person,
                                         color: Colors.white,
-                                        size: 12,
+                                        size: 10,
                                       ),
-                                      const SizedBox(width: 4),
+                                      const SizedBox(width: 2),
                                       Text(
                                         review['verified'] == true
-                                            ? "Verified Purchase"
+                                            ? "Verified"
                                             : "Unverified",
                                         style: const TextStyle(
                                           color: Colors.white,
-                                          fontSize: 10,
+                                          fontSize: 8,
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
@@ -1855,21 +1863,27 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
-              fontSize: 14,
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 14,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -2097,15 +2111,18 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      review['name'],
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                    Expanded(
+                      child: Text(
+                        review['name'],
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     Row(
                       children: List.generate(
                         5,
@@ -2114,7 +2131,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                               ? Icons.star_rounded
                               : Icons.star_border_rounded,
                           color: const Color(0xffFFD700),
-                          size: 14,
+                          size: 12,
                         ),
                       ),
                     ),
@@ -2146,14 +2163,14 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                         const Icon(
                           Icons.verified,
                           color: Color(0xff38A169),
-                          size: 14,
+                          size: 12,
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: 3),
                         Text(
                           "Verified Purchase",
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.7),
-                            fontSize: 11,
+                            fontSize: 10,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -2461,49 +2478,53 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
               // Header
               Padding(
                 padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "$_selectedPeriod Sales Analytics",
+                child:                   Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "$_selectedPeriod Sales Analytics",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              "Detailed earnings insights",
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 12,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xff38A169),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _selectedPeriod.toUpperCase(),
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        Text(
-                          "Detailed earnings insights",
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
                       ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xff38A169),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        _selectedPeriod.toUpperCase(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
               ),
               // Analytics Content
               Expanded(
@@ -3359,53 +3380,56 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
               // Header
               Padding(
                 padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
+                child:                   Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[800],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.arrow_back_ios,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: const Text(
+                          "Transaction Details",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
-                          color: Colors.grey[800],
-                          borderRadius: BorderRadius.circular(8),
+                          color: const Color(0xff38A169),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(
-                          Icons.arrow_back_ios,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    const Text(
-                      "Transaction Details",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xff38A169),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        "COMPLETED",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                        child: const Text(
+                          "DONE",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
               ),
               // Transaction Details Content
               Expanded(
@@ -3481,17 +3505,21 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                             ),
                             const SizedBox(height: 20),
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                _buildTransactionInfoItem(
-                                  "Transaction ID",
-                                  "#TXN${_generateTransactionId()}",
-                                  Icons.receipt_long,
+                                Expanded(
+                                  child: _buildTransactionInfoItem(
+                                    "Transaction ID",
+                                    "#TXN${_generateTransactionId()}",
+                                    Icons.receipt_long,
+                                  ),
                                 ),
-                                _buildTransactionInfoItem(
-                                  "Date & Time",
-                                  "${transaction['date']}\n${_getCurrentTime()}",
-                                  Icons.access_time,
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: _buildTransactionInfoItem(
+                                    "Date & Time",
+                                    "${transaction['date']}\n${_getCurrentTime()}",
+                                    Icons.access_time,
+                                  ),
                                 ),
                               ],
                             ),
@@ -3931,22 +3959,28 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: isTotal ? Colors.white : Colors.white.withOpacity(0.7),
-              fontSize: isTotal ? 16 : 14,
-              fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: isTotal ? Colors.white : Colors.white.withOpacity(0.7),
+                fontSize: isTotal ? 16 : 14,
+                fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          Text(
-            value,
-            style: TextStyle(
-              color: isTotal ? const Color(0xff38A169) : Colors.white,
-              fontSize: isTotal ? 18 : 14,
-              fontWeight: FontWeight.bold,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: isTotal ? const Color(0xff38A169) : Colors.white,
+                fontSize: isTotal ? 18 : 14,
+                fontWeight: FontWeight.bold,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -3959,21 +3993,27 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
-              fontSize: 14,
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 14,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -4224,7 +4264,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     );
   }
 
-// Add this method to show shop profile
+  // Add this method to show shop profile
   void _showShopProfile(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -4359,18 +4399,21 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                                     ? Icons.star_rounded
                                                     : Icons.star_border_rounded,
                                                 color: const Color(0xffFFD700),
-                                                size: 16,
+                                                size: 14,
                                               ),
                                             ),
                                           ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            "4.8 (1,247 reviews)",
-                                            style: TextStyle(
-                                              color: Colors.white.withOpacity(
-                                                0.8,
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              "4.8 (1,247 reviews)",
+                                              style: TextStyle(
+                                                color: Colors.white.withOpacity(
+                                                  0.8,
+                                                ),
+                                                fontSize: 11,
                                               ),
-                                              fontSize: 12,
+                                              overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
                                         ],
@@ -4807,21 +4850,27 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            day,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
-              fontSize: 14,
+          Expanded(
+            child: Text(
+              day,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 14,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          Text(
-            hours,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              hours,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -4864,9 +4913,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     );
   }
 
-
-
-// Edit shop profile functionality
+  // Edit shop profile functionality
   void _editShopProfile(BuildContext context) {
     final TextEditingController shopNameController = TextEditingController(
       text: "Urban Drift",
@@ -4935,19 +4982,22 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    const Text(
-                      "Edit Shop Profile",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: const Text(
+                        "Edit Shop Profile",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
+                        horizontal: 8,
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
@@ -4955,10 +5005,10 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Text(
-                        "EDIT MODE",
+                        "EDIT",
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 12,
+                          fontSize: 10,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -6166,7 +6216,6 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     });
   }
 
-
   // Show partial refund dialog
   void _showPartialRefundDialog(
     BuildContext context,
@@ -6464,21 +6513,27 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
-              fontSize: 14,
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 14,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -6508,7 +6563,6 @@ class _AnalyticsCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 4),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -6533,9 +6587,9 @@ class _AnalyticsCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     percent,
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
-                      fontSize: 16,
+                      fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -6557,10 +6611,10 @@ class _AnalyticsCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
-                fontSize: 18,
+                fontSize: MediaQuery.of(context).size.width * 0.045, // Responsive font size
               ),
             ),
             const SizedBox(height: 8),
@@ -6577,7 +6631,7 @@ class _AnalyticsCard extends StatelessWidget {
               label,
               style: TextStyle(
                 color: Colors.white.withOpacity(0.9),
-                fontSize: 12,
+                fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
                 fontWeight: FontWeight.w400,
               ),
             ),

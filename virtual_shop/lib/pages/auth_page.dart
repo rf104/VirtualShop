@@ -2,6 +2,7 @@ import 'package:email_validator/email_validator.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:virtual_shop/pages/home_page.dart';
 import 'package:virtual_shop/pages/seller_dashboard_page.dart';
 import 'package:virtual_shop/widgets/terms_conditions_dialog.dart';
 
@@ -92,7 +93,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     Navigator.pushReplacement(
       context,
       // MaterialPageRoute(builder: (context) => const HomePage()),
-      MaterialPageRoute(builder: (context) => const SellerDashboardPage()),
+      MaterialPageRoute(builder: (context) => const HomePage()),
     );
     ScaffoldMessenger.of(
       context,

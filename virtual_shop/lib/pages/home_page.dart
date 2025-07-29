@@ -5,6 +5,7 @@ import 'package:virtual_shop/pages/cart_page.dart';
 import 'package:virtual_shop/pages/chat_assistant_page.dart';
 import 'package:virtual_shop/pages/notification_page.dart';
 import 'package:virtual_shop/pages/profile_page.dart';
+import 'package:virtual_shop/pages/seller_dashboard_page.dart';
 import 'package:virtual_shop/widgets/glass_container.dart';
 
 class HomePage extends StatefulWidget {
@@ -108,6 +109,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         return const NotificationPage(key: ValueKey('NotificationPage'));
       case 6:
         return const ProfilePage(key: ValueKey('ProfilePage'));
+      case 7:
+        return const SellerDashboardPage(key: ValueKey('SellerDashboardPage'));
       default:
         return const Center(
           key: ValueKey('ComingSoonDefault'),
@@ -145,7 +148,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     _buildNavItem(Icons.bubble_chart, 4),
                     _buildNavItem(Icons.notifications, 5),
                     _buildNavItem(Icons.person_outline, 6),
-                    
+                    _buildNavItem(Icons.store, 7),
                   ],
                 ),
               ),
