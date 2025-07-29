@@ -56,6 +56,9 @@ dependencies:
   google_fonts: ^6.2.1
   mesh: ^0.5.0
   oc_liquid_glass: 0.1.1
+  pro_image_editor: ^10.5.4
+  image_background_remover: ^1.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

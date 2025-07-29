@@ -11,9 +11,8 @@ class PromotionWidget extends StatefulWidget {
 class _PromotionWidgetState extends State<PromotionWidget> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
-  late final List<Color> _dominantColors;
 
-  final List<Map<String, String>> _promotions = [
+  static final List<Map<String, String>> _promotions = [
     {
       'title': 'Great Product Collection',
       'subtitle': 'We have the best products',
@@ -31,10 +30,17 @@ class _PromotionWidgetState extends State<PromotionWidget> {
     },
   ];
 
+  // Cache for dominant colors, static so it persists across widget rebuilds
+  static final Map<String, Color> _dominantColorCache = {};
+  late final List<Color> _dominantColors;
+
   @override
   void initState() {
     super.initState();
-    _dominantColors = List.filled(_promotions.length, Colors.grey[900]!);
+    _dominantColors = List.generate(_promotions.length, (i) {
+      final img = _promotions[i]['image']!;
+      return _dominantColorCache[img] ?? Colors.grey[900]!;
+    });
     _pageController.addListener(() {
       if (_pageController.page != null) {
         setState(() {
@@ -42,26 +48,41 @@ class _PromotionWidgetState extends State<PromotionWidget> {
         });
       }
     });
-    _updateAllPalettes();
+    _updateAllPalettesIfNeeded();
   }
 
-  Future<void> _updateAllPalettes() async {
+  Future<void> _updateAllPalettesIfNeeded() async {
     if (!mounted) return;
 
+    bool needsUpdate = false;
     for (int i = 0; i < _promotions.length; i++) {
-      final provider = AssetImage(_promotions[i]['image']!);
+      final img = _promotions[i]['image']!;
+      if (!_dominantColorCache.containsKey(img)) {
+        needsUpdate = true;
+        break;
+      }
+    }
+    if (!needsUpdate) return;
+
+    for (int i = 0; i < _promotions.length; i++) {
+      final img = _promotions[i]['image']!;
+      if (_dominantColorCache.containsKey(img)) continue;
+      final provider = AssetImage(img);
       try {
         final paletteGenerator = await PaletteGenerator.fromImageProvider(
           provider,
-          size: const Size(150, 190), // Specify size for performance
+          size: const Size(150, 190),
         );
+        final color =
+            paletteGenerator.dominantColor?.color ?? Colors.grey[900]!;
+        _dominantColorCache[img] = color;
         if (mounted) {
           setState(() {
-            _dominantColors[i] =
-                paletteGenerator.dominantColor?.color ?? Colors.grey[900]!;
+            _dominantColors[i] = color;
           });
         }
       } catch (e) {
+        _dominantColorCache[img] = Colors.grey[900]!;
         if (mounted) {
           setState(() {
             _dominantColors[i] = Colors.grey[900]!;
