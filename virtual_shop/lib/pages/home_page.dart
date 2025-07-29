@@ -145,6 +145,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     _buildNavItem(Icons.bubble_chart, 4),
                     _buildNavItem(Icons.notifications, 5),
                     _buildNavItem(Icons.person_outline, 6),
+                    
                   ],
                 ),
               ),

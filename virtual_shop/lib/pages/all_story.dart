@@ -1,5 +1,8 @@
 import 'dart:ui';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/widgets/best_seller_widget.dart';
 import 'package:virtual_shop/widgets/categories_widget.dart';
@@ -157,55 +160,140 @@ class StoryItem extends StatelessWidget {
   }
 }
 
-class YourStoryItem extends StatelessWidget {
+class YourStoryItem extends StatefulWidget {
   const YourStoryItem({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        SizedBox(
-          width: 70,
-          height: 70,
-          child: Stack(
+  State<YourStoryItem> createState() => _YourStoryItemState();
+}
+
+class _YourStoryItemState extends State<YourStoryItem> {
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(source: source);
+      if (pickedFile == null) return;
+
+      final Uint8List imageBytes = await pickedFile.readAsBytes();
+      final String base64Image = base64Encode(imageBytes);
+      
+      // Print the base64 image
+      print('Base64 Image: $base64Image');
+      
+      // Show a snackbar to confirm the image was processed
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Image processed and base64 printed to console'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error picking image: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking image: $e'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showImageSourceDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text(
+            'Choose Image Source',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.grey, width: 2),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Colors.white),
+                title: const Text(
+                  'Camera',
+                  style: TextStyle(color: Colors.white),
                 ),
-                child: const CircleAvatar(
-                  backgroundImage: AssetImage('assets/images/profile2.jpg'),
-                ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImage(ImageSource.camera);
+                },
               ),
-              Positioned(
-                bottom: 0,
-                right: 0,
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.black, width: 2),
-                  ),
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      color: Colors.blue,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.add, color: Colors.white, size: 16),
-                  ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.white),
+                title: const Text(
+                  'Gallery',
+                  style: TextStyle(color: Colors.white),
                 ),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImage(ImageSource.gallery);
+                },
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 8),
-        const Text('You', style: TextStyle(fontSize: 12, color: Colors.white)),
-      ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: _showImageSourceDialog,
+      child: Column(
+        children: [
+          SizedBox(
+            width: 70,
+            height: 70,
+            child: Stack(
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.grey, width: 2),
+                  ),
+                  child: const CircleAvatar(
+                    backgroundImage: AssetImage('assets/images/profile2.jpg'),
+                  ),
+                ),
+                Positioned(
+                  bottom: 0,
+                  right: 0,
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.black, width: 2),
+                    ),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        color: Colors.blue,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.add, color: Colors.white, size: 16),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text('You', style: TextStyle(fontSize: 12, color: Colors.white)),
+        ],
+      ),
     );
   }
 }

@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:virtual_shop/pages/home_page.dart';
 import 'package:virtual_shop/pages/landing_page.dart';
 import 'package:virtual_shop/utils/theme.dart';
-import 'package:virtual_shop/pages/seller_dashboard_page.dart';
+
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }

@@ -159,26 +159,48 @@ class _SimilarProductsState extends State<SimilarProducts>
                   top: y - (50 * scale),
                   child: Transform.scale(
                     scale: scale,
-                    child: GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                ProductDetailPage(product: product),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    ProductDetailPage(product: product),
+                              ),
+                            );
+                          },
+                          child: GlassContainer(
+                            width: 100,
+                            height: 100,
+                            borderRadius: 85,
+                            color: Colors.white.withOpacity(0.08),
+                            child: CircleAvatar(
+                              radius: 70,
+                              backgroundImage: AssetImage(product.image),
+                            ),
                           ),
-                        );
-                      },
-                      child: GlassContainer(
-                        width: 100,
-                        height: 100,
-                        borderRadius: 85,
-                        color: Colors.white.withOpacity(0.08),
-                        child: CircleAvatar(
-                          radius: 70,
-                          backgroundImage: AssetImage(product.image),
                         ),
-                      ),
+                        const SizedBox(height: 8),
+                        Text(
+                          product.name,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black54,
+                                blurRadius: 4,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
                   ),
                 );

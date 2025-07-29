@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
-import 'edit_profile_final.dart';
 import 'package:palette_generator/palette_generator.dart';
+import 'package:virtual_shop/pages/virtual_closet.dart';
+import 'package:virtual_shop/models/product.dart';
+import 'package:virtual_shop/models/closet.dart';
+import 'edit_profile_final.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -69,6 +72,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 const SizedBox(height: 30),
                 _buildThreadsSection(),
                 const SizedBox(height: 30),
+                _buildClosetsSection(),
+                const SizedBox(height: 30),
                 _buildMyPostsSection(context),
                 const SizedBox(height: 50),
               ],
@@ -77,6 +82,301 @@ class _ProfilePageState extends State<ProfilePage> {
         ],
       ),
     );
+  }
+
+  // Closet model
+
+  List<Closet> _closets = [
+    Closet(
+      name: "Summer Outfits",
+      image: "assets/images/hat.jpg",
+      products: List<Product>.from(dummyProducts),
+    ),
+    Closet(
+      name: "Winter Wear",
+      image: "assets/images/hoodie.jpg",
+      products: List<Product>.from(dummyProducts),
+    ),
+    Closet(
+      name: "Eyewear",
+      image: "assets/images/eyeglass.png",
+      products: List<Product>.from(dummyProducts),
+    ),
+    Closet(
+      name: "Shoes",
+      image: "assets/images/glass1.jpg",
+      products: List<Product>.from(dummyProducts),
+    ),
+    Closet(
+      name: "Accessories",
+      image: "assets/images/love.png",
+      products: List<Product>.from(dummyProducts),
+    ),
+  ];
+
+  Widget _buildClosetsSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'My Closets',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add, color: Colors.white),
+                onPressed: _showCreateClosetDialog,
+                tooltip: 'Create Closet',
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 120,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _closets.length,
+              separatorBuilder: (context, index) => const SizedBox(width: 15),
+              itemBuilder: (context, index) {
+                final closet = _closets[index];
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            VirtualClosetPage(products: closet.products),
+                      ),
+                    );
+                  },
+                  child: Column(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: Image.asset(
+                          closet.image,
+                          width: 70,
+                          height: 70,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          closet.name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCreateClosetDialog() async {
+    String closetName = '';
+    String? selectedImage;
+    List<Product> selectedProducts = [];
+    final List<String> closetImages = [
+      "assets/images/hat.jpg",
+      "assets/images/hoodie.jpg",
+      "assets/images/eyeglass.png",
+      "assets/images/glass1.jpg",
+      "assets/images/love.png",
+    ];
+    // For demo, use dummyProducts from virtual_closet.dart
+    final List<Product> allProducts = List<Product>.from(dummyProducts);
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              backgroundColor: Colors.black87,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: const Text(
+                'Create Closet',
+                style: TextStyle(color: Colors.white),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Closet Name',
+                        labelStyle: TextStyle(color: Colors.white70),
+                        enabledBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white38),
+                        ),
+                        focusedBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white),
+                        ),
+                      ),
+                      onChanged: (val) => closetName = val,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Select Image:',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: closetImages.map((img) {
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: GestureDetector(
+                              onTap: () => setState(() => selectedImage = img),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: selectedImage == img
+                                        ? Colors.greenAccent
+                                        : Colors.transparent,
+                                    width: 3,
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.asset(
+                                    img,
+                                    width: 50,
+                                    height: 50,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Select Products:',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 110,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: allProducts.map((prod) {
+                            final isSelected = selectedProducts.contains(prod);
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    if (isSelected) {
+                                      selectedProducts.remove(prod);
+                                    } else {
+                                      selectedProducts.add(prod);
+                                    }
+                                  });
+                                },
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? Colors.greenAccent
+                                          : Colors.transparent,
+                                      width: 3,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.asset(
+                                      prod.image,
+                                      width: 70,
+                                      height: 70,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (closetName.isNotEmpty &&
+                        selectedImage != null &&
+                        selectedProducts.isNotEmpty) {
+                      setState(() {
+                        _closets.add(
+                          Closet(
+                            name: closetName,
+                            image: selectedImage!,
+                            products: List<Product>.from(selectedProducts),
+                          ),
+                        );
+                      });
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.greenAccent.withOpacity(0.8),
+                  ),
+                  child: const Text(
+                    'Create',
+                    style: TextStyle(color: Colors.black),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    setState(() {}); // Refresh closets list
   }
 
   Widget _buildMyPostsSection(BuildContext context) {
@@ -189,10 +489,15 @@ class _ProfilePageState extends State<ProfilePage> {
             );
           },
           icon: const Icon(Icons.edit, color: Colors.white),
-          label: const Text('Edit Profile', style: TextStyle(color: Colors.white)),
+          label: const Text(
+            'Edit Profile',
+            style: TextStyle(color: Colors.white),
+          ),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.white.withOpacity(0.2),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
           ),
         ),
         const SizedBox(height: 20),

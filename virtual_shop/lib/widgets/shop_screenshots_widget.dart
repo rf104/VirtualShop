@@ -1,18 +1,75 @@
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:pro_image_editor/designs/frosted_glass/frosted_glass.dart';
+import '../pages/related_products_page.dart';
+import '../models/product.dart';
+
+typedef OnImagePicked = void Function(Uint8List imageBytes);
 
 class ShopScreenshotsWidget extends StatefulWidget {
-  const ShopScreenshotsWidget({super.key});
+  final OnImagePicked? onImagePicked;
+  const ShopScreenshotsWidget({super.key, this.onImagePicked});
 
   @override
   State<ShopScreenshotsWidget> createState() => _ShopScreenshotsWidgetState();
 }
 
 class _ShopScreenshotsWidgetState extends State<ShopScreenshotsWidget> {
+  List<Product> _dummyProducts() {
+    return [
+      Product(
+        name: 'Winter Shearling Jacket',
+        image: 'assets/images/hoodie.jpg',
+        rating: 4.1,
+        price: 120.00,
+        category: 'Cozy Wear',
+        weather: 'Rainy',
+        temp: '16-22°C',
+        event: 'Promenade',
+        description:
+            'Elevate your winter wardrobe with this luxurious white shearling jacket, paired with a chic black turtleneck and matching skirt. Perfect for a stylish day out, this outfit combines comfort and high fashion, ensuring you stay warm and turn heads wherever you go.',
+      ),
+      Product(
+        name: 'Casual Chic Ensemble',
+        image: 'assets/images/hat1.jpg',
+        rating: 4.1,
+        price: 85.50,
+        category: 'Regular Wear',
+        weather: 'Neutral',
+        temp: '16-22°C',
+        event: 'Promenade',
+        description:
+            'Step out in style with this casual chic ensemble featuring a trendy hat.',
+      ),
+      Product(
+        name: 'Urban Explorer Outfit',
+        image: 'assets/images/shoe.jpg',
+        rating: 4.9,
+        price: 215.00,
+        category: 'Cozy Wear',
+        weather: 'Rainy',
+        temp: '16-22°C',
+        event: 'Promenade',
+        description:
+            'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
+      ),
+      Product(
+        name: 'Classic glasses',
+        image: 'assets/images/glass1.jpg',
+        rating: 4.9,
+        price: 215.00,
+        category: 'Cozy Wear',
+        weather: 'Rainy',
+        temp: '16-22°C',
+        event: 'Promenade',
+        description:
+            'Elevate your style with these classic glasses, perfect for any occasion. Their timeless design and high-quality material make them a must-have accessory for those who appreciate both fashion and functionality.',
+      ),
+    ];
+  }
+
   final ImagePicker _picker = ImagePicker();
 
   Future<void> _pickAndEditImage(ImageSource source) async {
@@ -27,12 +84,18 @@ class _ShopScreenshotsWidgetState extends State<ShopScreenshotsWidget> {
       MaterialPageRoute(
         builder: (context) => ProImageEditor.memory(
           imageBytes,
-
           callbacks: ProImageEditorCallbacks(
             onImageEditingComplete: (Uint8List editedBytes) async {
-              String base64Image = base64Encode(editedBytes);
-              print('Base64 image: ' + base64Image.substring(0, 100) + '...');
-              Navigator.pop(context);
+              if (widget.onImagePicked != null) {
+                widget.onImagePicked!(editedBytes);
+              }
+              Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+                MaterialPageRoute(
+                  builder: (context) =>
+                      RelatedProductsPage(products: _dummyProducts()),
+                ),
+                (route) => route.isFirst,
+              );
             },
           ),
           configs: ProImageEditorConfigs(

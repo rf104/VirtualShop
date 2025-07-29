@@ -24,6 +24,178 @@ class ProductDetailPage extends StatefulWidget {
 }
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
+  List<Product> _dummyRelatedProducts() {
+    return [
+      Product(
+        name: 'Winter Shearling Jacket',
+        image: 'assets/images/hoodie.jpg',
+        rating: 4.1,
+        price: 120.00,
+        category: 'Cozy Wear',
+        weather: 'Rainy',
+        temp: '16-22°C',
+        event: 'Promenade',
+        description:
+            'Elevate your winter wardrobe with this luxurious white shearling jacket, paired with a chic black turtleneck and matching skirt. Perfect for a stylish day out, this outfit combines comfort and high fashion, ensuring you stay warm and turn heads wherever you go.',
+      ),
+      Product(
+        name: 'Casual Chic Ensemble',
+        image: 'assets/images/hat1.jpg',
+        rating: 4.1,
+        price: 85.50,
+        category: 'Regular Wear',
+        weather: 'Neutral',
+        temp: '16-22°C',
+        event: 'Promenade',
+        description:
+            'Step out in style with this casual chic ensemble featuring a trendy hat.',
+      ),
+      Product(
+        name: 'Urban Explorer Outfit',
+        image: 'assets/images/shoe.jpg',
+        rating: 4.9,
+        price: 215.00,
+        category: 'Cozy Wear',
+        weather: 'Rainy',
+        temp: '16-22°C',
+        event: 'Promenade',
+        description:
+            'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
+      ),
+      Product(
+        name: 'Classic glasses',
+        image: 'assets/images/glass1.jpg',
+        rating: 4.9,
+        price: 215.00,
+        category: 'Cozy Wear',
+        weather: 'Rainy',
+        temp: '16-22°C',
+        event: 'Promenade',
+        description:
+            'Elevate your style with these classic glasses, perfect for any occasion. Their timeless design and high-quality material make them a must-have accessory for those who appreciate both fashion and functionality.',
+      ),
+    ];
+  }
+
+  Widget _buildRelatedProductsSection() {
+    final related = _dummyRelatedProducts();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        const Text(
+          'Related Products',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 220,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: related.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final product = related[index];
+              return SizedBox(
+                width: 150,
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            ProductDetailPage(product: product),
+                      ),
+                    );
+                  },
+                  child: _ProductCardMini(product: product),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _ProductCardMini({required Product product}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[850],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      padding: const EdgeInsets.all(8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AspectRatio(
+            aspectRatio: 1,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset(
+                product.image,
+                fit: BoxFit.cover,
+                width: double.infinity,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  color: Colors.grey[700],
+                  child: const Center(
+                    child: Icon(
+                      Icons.broken_image,
+                      color: Colors.white,
+                      size: 40,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            product.name,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            product.category,
+            style: TextStyle(color: Colors.grey[400], fontSize: 12),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(
+                child: Text(
+                  '৳${product.price.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Flexible(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    const Icon(Icons.star, color: Colors.amber, size: 16),
+                    const SizedBox(width: 4),
+                    Text(
+                      product.rating.toString(),
+                      style: const TextStyle(fontSize: 12, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   late Color _dominantColor;
   final List<String> _comments = [];
   final TextEditingController _commentController = TextEditingController();
@@ -279,7 +451,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             specStrength: 0.0,
             lightbandWidthPx: 20.0,
           ),
-
           child: Container(
             padding: const EdgeInsets.all(24),
             child: SingleChildScrollView(
@@ -429,6 +600,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   ),
                   const SizedBox(height: 24),
                   _buildActionButtons(),
+                  const SizedBox(height: 32),
+                  _buildRelatedProductsSection(),
                   const SizedBox(height: 32),
                   _buildCommentSection(),
                 ],

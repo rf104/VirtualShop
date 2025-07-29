@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
+import 'package:virtual_shop/widgets/shop_screenshots_widget.dart';
+import 'dart:typed_data';
+import 'dart:convert';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+// import 'package:firebase_ai/firebase_ai.dart';
 
 class VirtualTryOnPage extends StatefulWidget {
   final String productImage;
   final String productName;
-
   const VirtualTryOnPage({
     super.key,
     required this.productImage,
@@ -15,46 +22,104 @@ class VirtualTryOnPage extends StatefulWidget {
 }
 
 class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
-  late final List<String> _productViews;
+  // Helper to try Segmind IDM VTON API with all keys
+  Future<Uint8List?> _trySegmindVTON({
+    required Uint8List userImageBytes,
+    required Uint8List productImageBytes,
+    String garmentDescription = 'Green colour semi Formal Blazer',
+  }) async {
+    final List<String?> apiKeys = [
+      dotenv.env['SEGMIND_API_KEY_1'],
+      dotenv.env['SEGMIND_API_KEY_2'],
+      dotenv.env['SEGMIND_API_KEY_3'],
+    ];
+    final String userBase64 = base64Encode(userImageBytes);
+    final String productBase64 = base64Encode(productImageBytes);
+    // Segmind expects base64 with data URI prefix
+    // final String userDataUri = 'data:image/jpeg;base64,$userBase64';
+    final String userDataUri =
+        'https://fiahucneelhdkcazyzwn.supabase.co/storage/v1/object/public/arik//person.jpg';
+
+    // final String productDataUri = 'data:image/jpeg;base64,$productBase64';
+    final String productDataUri =
+        'https://fiahucneelhdkcazyzwn.supabase.co/storage/v1/object/public/arik//cloth.jpg';
+
+    final Map<String, dynamic> payload = {
+      'crop': false,
+      'seed': 42,
+      'steps': 30,
+      'category': 'dresses',
+      'force_dc': false,
+      'human_img': userDataUri,
+      'garm_img': productDataUri,
+      'mask_only': false,
+      'garment_des': garmentDescription,
+    };
+    Exception? lastError;
+    for (final key in apiKeys) {
+      if (key == null || key.isEmpty) continue;
+      try {
+        final response = await http.post(
+          Uri.parse('https://api.segmind.com/v1/idm-vton'),
+          headers: {'x-api-key': key, 'Content-Type': 'application/json'},
+          body: jsonEncode(payload),
+        );
+        if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+          // Segmind returns image/jpeg directly
+          return response.bodyBytes;
+        } else {
+          lastError = Exception(
+            'Segmind error: ${response.statusCode} ${response.body}',
+          );
+        }
+      } catch (e) {
+        lastError = Exception('Segmind exception: $e');
+      }
+    }
+    if (lastError != null) throw lastError;
+    return null;
+  }
+
+  late final List<Map<String, String>> _productViewsWithSizes;
   late String _currentMainImage;
   int _selectedThumbnailIndex = 0;
+
+  Uint8List? _userImage;
+  Uint8List? _virtualTryOnImage;
+  String? _error;
+  bool _isGenerating = false;
 
   @override
   void initState() {
     super.initState();
-    _productViews = [
-      widget.productImage,
-      widget.productImage,
-      widget.productImage,
-      widget.productImage,
+    _productViewsWithSizes = [
+      {'image': 'assets/images/s.jpg', 'size': 'S'},
+      {'image': 'assets/images/m.jpg', 'size': 'M'},
+      {'image': 'assets/images/L.jpg', 'size': 'L'},
+      {'image': 'assets/images/xl.jpg', 'size': 'XL'},
     ];
-    _currentMainImage = _productViews[0];
-  }
-
-  @override
-  void dispose() {
-    super.dispose();
+    _currentMainImage = _productViewsWithSizes[0]['image']!;
   }
 
   void _cycleMainImage() {
     setState(() {
       _selectedThumbnailIndex =
-          (_selectedThumbnailIndex + 1) % _productViews.length;
-      _currentMainImage = _productViews[_selectedThumbnailIndex];
+          (_selectedThumbnailIndex + 1) % _productViewsWithSizes.length;
+      _currentMainImage =
+          _productViewsWithSizes[_selectedThumbnailIndex]['image']!;
     });
   }
 
   void _onThumbnailTapped(int index) {
     setState(() {
       _selectedThumbnailIndex = index;
-      _currentMainImage = _productViews[index];
+      _currentMainImage = _productViewsWithSizes[index]['image']!;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -65,118 +130,357 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
         title: Text(
           widget.productName,
           style: const TextStyle(
-            color: Colors.black,
+            color: Colors.greenAccent,
             fontWeight: FontWeight.bold,
           ),
         ),
         centerTitle: true,
         actions: [
           IconButton(
-            icon: const Icon(Icons.more_vert, color: Colors.black),
-            onPressed: () {
-              // TODO: Implement more options
-            },
+            icon: Icon(Symbols.auto_awesome, color: Colors.black),
+            onPressed: _onGeminiPressed,
           ),
         ],
       ),
       body: Column(
         children: [
           const SizedBox(height: 20),
-          Expanded(
-            flex: 5,
-            child: Center(
-              child: Image.asset(
-                _currentMainImage,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return const Center(
-                    child: Text(
-                      'Could not load image asset',
-                      style: TextStyle(color: Colors.red),
+          if (_userImage != null &&
+              (_isGenerating || _virtualTryOnImage != null || _error != null))
+            Expanded(
+              flex: 5,
+              child: Center(
+                child: _isGenerating
+                    ? const CircularProgressIndicator()
+                    : _error != null
+                    ? Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error, color: Colors.red, size: 48),
+                          const SizedBox(height: 12),
+                          Text(
+                            _error!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: () {
+                              if (_userImage != null)
+                                _generateVirtualTryOn(_userImage!);
+                            },
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      )
+                    : _virtualTryOnImage != null
+                    ? Image.memory(_virtualTryOnImage!, fit: BoxFit.contain)
+                    : const SizedBox.shrink(),
+              ),
+            )
+          else
+            Expanded(
+              flex: 5,
+              child: Center(
+                child: Image.asset(
+                  _currentMainImage,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Center(
+                      child: Text(
+                        'Could not load image asset',
+                        style: TextStyle(color: Colors.red),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          const SizedBox(height: 20),
+          if (_userImage == null)
+            GestureDetector(
+              onTap: _cycleMainImage,
+              child: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.grey[200],
+                  border: Border.all(color: Colors.grey, width: 1),
+                ),
+                child: const Icon(Icons.threesixty, color: Colors.black),
+              ),
+            ),
+          if (_userImage == null) ...[
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 100,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: _productViewsWithSizes.length,
+                itemBuilder: (context, index) {
+                  final isSelected = _selectedThumbnailIndex == index;
+                  final sizeLabel = _productViewsWithSizes[index]['size']!;
+                  final imagePath = _productViewsWithSizes[index]['image']!;
+                  return GestureDetector(
+                    onTap: () => _onThumbnailTapped(index),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 70,
+                            height: 70,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: isSelected
+                                    ? Colors.black
+                                    : Colors.transparent,
+                                width: 2,
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.asset(imagePath, fit: BoxFit.cover),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Size: $sizeLabel',
+                            style: TextStyle(
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              color: isSelected
+                                  ? Colors.yellow
+                                  : Colors.grey[700],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 },
               ),
             ),
-          ),
-          const SizedBox(height: 20),
-          GestureDetector(
-            onTap: _cycleMainImage,
-            child: Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.grey[200],
-                border: Border.all(color: Colors.grey, width: 1),
-              ),
-              child: const Icon(Icons.threesixty, color: Colors.black),
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            height: 80,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _productViews.length,
-              itemBuilder: (context, index) {
-                return GestureDetector(
-                  onTap: () => _onThumbnailTapped(index),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Container(
-                      width: 70,
-                      height: 70,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: _selectedThumbnailIndex == index
-                              ? Colors.black
-                              : Colors.transparent,
-                          width: 2,
-                        ),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.asset(
-                          _productViews[index],
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 30),
-          Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 24.0,
-              vertical: 16.0,
-            ),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () {
-                  // TODO: Implement actual online fitting logic
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                ),
-                child: const Text(
-                  'Online Fitting',
-                  style: TextStyle(fontSize: 18, color: Colors.white),
-                ),
-              ),
-            ),
-          ),
+            const SizedBox(height: 30),
+          ],
         ],
       ),
     );
+  }
+
+  void _onGeminiPressed() async {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: ShopScreenshotsWidget(
+                onImagePicked: (Uint8List imageBytes) {
+                  setState(() {
+                    _userImage = imageBytes;
+                    _virtualTryOnImage = null;
+                    _error = null;
+                  });
+                  _generateVirtualTryOn(imageBytes);
+                },
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _generateVirtualTryOn(Uint8List userImageBytes) async {
+    setState(() {
+      _isGenerating = true;
+      _error = null;
+      _virtualTryOnImage = null;
+    });
+    try {
+      // Load product image asset as bytes
+      final ByteData productData = await rootBundle.load(widget.productImage);
+      final Uint8List productImageBytes = productData.buffer.asUint8List();
+      // Try Segmind first
+      try {
+        final Uint8List? segmindResult = await _trySegmindVTON(
+          userImageBytes: userImageBytes,
+          productImageBytes: productImageBytes,
+          garmentDescription: widget.productName,
+        );
+        if (segmindResult != null) {
+          setState(() {
+            _virtualTryOnImage = segmindResult;
+            _isGenerating = false;
+            _error = null;
+          });
+          return;
+        }
+      } catch (e) {
+        // Segmind failed, will fall back to Gemini
+        debugPrint('Segmind failed: $e');
+      }
+      // Fallback: Gemini
+      try {
+        // ...existing code for Gemini API call...
+        final String productBase64 = base64Encode(productImageBytes);
+        final String userBase64 = base64Encode(userImageBytes);
+        final Map<String, dynamic> payload = {
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "inlineData": {
+                    "mimeType": "image/jpeg",
+                    "data": productBase64,
+                  },
+                },
+                {
+                  "text":
+                      "this is the product image, no need to reply image, reply \"Ok\"",
+                },
+              ],
+            },
+            {
+              "role": "model",
+              "parts": [
+                {"text": "Ok"},
+              ],
+            },
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "inlineData": {"mimeType": "image/jpeg", "data": userBase64},
+                },
+                {
+                  "text":
+                      "this is the user image, no need to reply image, reply \"ok\"",
+                },
+              ],
+            },
+            {
+              "role": "model",
+              "parts": [
+                {"text": "Ok"},
+              ],
+            },
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text":
+                      "Create a single image output. Overlay the product image's apparel, accessories (if present), and visible footwear onto the user's image. The user's original pose and facial features are paramount and must not change. Maintain the product's true texture. No text, just the image.",
+                },
+              ],
+            },
+          ],
+          "generationConfig": {
+            "responseModalities": ["IMAGE", "TEXT"],
+            "temperature": 1,
+          },
+        };
+        String? apiKey = dotenv.env['GEMINI_API_KEY'];
+        if (apiKey == null || apiKey.isEmpty) {
+          throw Exception('GEMINI_API_KEY not set in environment or .env');
+        }
+        final response = await http.post(
+          Uri.parse(
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:streamGenerateContent?key=$apiKey',
+          ),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(payload),
+        );
+        if (response.statusCode != 200) {
+          throw Exception('API error: ${response.statusCode} ${response.body}');
+        }
+        // Parse response for base64 image (PNG)
+        String? imageBase64;
+        final trimmedBody = response.body.trim();
+        if (trimmedBody.startsWith('[') && trimmedBody.endsWith(']')) {
+          try {
+            final List<dynamic> arr = jsonDecode(trimmedBody);
+            for (final jsonLine in arr) {
+              final candidates = jsonLine['candidates'] ?? [];
+              for (final candidate in candidates) {
+                final parts = candidate['content']['parts'] ?? [];
+                for (final part in parts) {
+                  if (part['inlineData'] != null &&
+                      part['inlineData']['mimeType'] == 'image/png') {
+                    imageBase64 = part['inlineData']['data'];
+                    break;
+                  }
+                }
+              }
+              if (imageBase64 != null) break;
+            }
+          } catch (e) {
+            throw Exception('Failed to parse JSON array response: $e');
+          }
+        } else {
+          final lines = response.body.split('\n');
+          for (final line in lines) {
+            final trimmed = line.trim();
+            if (trimmed.isEmpty ||
+                !trimmed.startsWith('{') ||
+                !trimmed.endsWith('}'))
+              continue;
+            try {
+              final Map<String, dynamic> jsonLine = jsonDecode(trimmed);
+              final candidates = jsonLine['candidates'] ?? [];
+              for (final candidate in candidates) {
+                final parts = candidate['content']['parts'] ?? [];
+                for (final part in parts) {
+                  if (part['inlineData'] != null &&
+                      part['inlineData']['mimeType'] == 'image/png') {
+                    imageBase64 = part['inlineData']['data'];
+                    break;
+                  }
+                }
+              }
+              if (imageBase64 != null) break;
+            } catch (_) {
+              continue;
+            }
+          }
+        }
+        if (imageBase64 == null) {
+          throw Exception('No image found in response.');
+        }
+        final Uint8List resultImage = base64Decode(imageBase64);
+        setState(() {
+          _virtualTryOnImage = resultImage;
+          _isGenerating = false;
+          _error = null;
+        });
+        return;
+      } catch (e) {
+        setState(() {
+          _error =
+              'Failed to generate virtual try-on image (Gemini fallback). ${e.toString()}';
+          _isGenerating = false;
+        });
+        return;
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Failed to generate virtual try-on image. ${e.toString()}';
+        _isGenerating = false;
+      });
+    }
   }
 }

@@ -31,6 +31,10 @@ dependencies:
   flutter:
     sdk: flutter
 
+  material_symbols_icons: ^4.2815.1
+
+  firebase_ai: ^2.2.1
+
   
   
   
@@ -58,6 +62,7 @@ dependencies:
   oc_liquid_glass: 0.1.1
   pro_image_editor: ^10.5.4
   image_background_remover: ^1.0.0
+  http: ^1.4.0
 
 dev_dependencies:
   flutter_test:
