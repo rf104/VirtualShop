@@ -1,12 +1,183 @@
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:virtual_shop/widgets/shop_screenshots_widget.dart';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:pro_image_editor/pro_image_editor.dart';
+import 'package:pro_image_editor/designs/frosted_glass/frosted_glass.dart';
 // import 'package:firebase_ai/firebase_ai.dart';
+
+// Custom widget for virtual try-on image picking
+class VirtualTryOnImagePicker extends StatefulWidget {
+  final Function(Uint8List imageBytes) onImagePicked;
+  
+  const VirtualTryOnImagePicker({
+    super.key,
+    required this.onImagePicked,
+  });
+
+  @override
+  State<VirtualTryOnImagePicker> createState() => _VirtualTryOnImagePickerState();
+}
+
+class _VirtualTryOnImagePickerState extends State<VirtualTryOnImagePicker> {
+  final ImagePicker _picker = ImagePicker();
+
+  Future<void> _pickAndEditImage(ImageSource source) async {
+    final XFile? pickedFile = await _picker.pickImage(source: source);
+    if (pickedFile == null) return;
+
+    final Uint8List imageBytes = await pickedFile.readAsBytes();
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ProImageEditor.memory(
+          imageBytes,
+          callbacks: ProImageEditorCallbacks(
+            onImageEditingComplete: (Uint8List editedBytes) async {
+              widget.onImagePicked(editedBytes);
+              Navigator.of(context, rootNavigator: true).pop();
+            },
+          ),
+          configs: ProImageEditorConfigs(
+            designMode: platformDesignMode,
+            theme: Theme.of(context).copyWith(
+              iconTheme: Theme.of(context).iconTheme.copyWith(color: Colors.white),
+            ),
+            mainEditor: MainEditorConfigs(
+              widgets: MainEditorWidgets(
+                closeWarningDialog: (editor) async {
+                  if (!context.mounted) return false;
+                  return await showDialog<bool>(
+                        context: context,
+                        builder: (BuildContext context) =>
+                            FrostedGlassCloseDialog(editor: editor),
+                      ) ??
+                      false;
+                },
+                appBar: (editor, rebuildStream) => null,
+                bottomBar: (editor, rebuildStream, key) => null,
+                bodyItems: _buildMainBodyWidgets,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openStickerEditor(ProImageEditorState editor) async {
+    Layer? layer = await editor.openPage(
+      FrostedGlassStickerPage(
+        configs: editor.configs,
+        callbacks: editor.callbacks,
+      ),
+    );
+
+    if (layer == null || !mounted) return;
+
+    if (layer.runtimeType != WidgetLayer) {
+      layer.scale = editor.configs.emojiEditor.initScale;
+    }
+
+    editor.addLayer(layer);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(24.0),
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        borderRadius: BorderRadius.circular(20.0),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'Virtual Try-On',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'UPLOAD YOUR PHOTO TO TRY ON THIS PRODUCT',
+            style: TextStyle(fontSize: 12, color: Colors.white70),
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _pickAndEditImage(ImageSource.camera),
+                  icon: const Icon(
+                    Icons.camera_alt_outlined,
+                    color: Colors.white,
+                  ),
+                  label: const Text(
+                    'Camera',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _pickAndEditImage(ImageSource.gallery),
+                  icon: const Icon(
+                    Icons.photo_library_outlined,
+                    color: Colors.white,
+                  ),
+                  label: const Text(
+                    'Photos',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<ReactiveWidget> _buildMainBodyWidgets(
+    ProImageEditorState editor,
+    Stream<dynamic> rebuildStream,
+  ) {
+    return [
+      if (editor.selectedLayerIndex < 0)
+        ReactiveWidget(
+          stream: rebuildStream,
+          builder: (_) => FrostedGlassActionBar(
+            editor: editor,
+            openStickerEditor: () => _openStickerEditor(editor),
+          ),
+        ),
+    ];
+  }
+}
 
 class VirtualTryOnPage extends StatefulWidget {
   final String productImage;
@@ -287,7 +458,7 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
               ),
-              child: ShopScreenshotsWidget(
+              child: VirtualTryOnImagePicker(
                 onImagePicked: (Uint8List imageBytes) {
                   setState(() {
                     _userImage = imageBytes;
