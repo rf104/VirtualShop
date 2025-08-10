@@ -1,0 +1,129 @@
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+from datetime import datetime
+import asyncpg
+import logging
+
+# --- Logging Setup ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI()
+
+# --- Database Connection ---
+async def get_db_connection_pool():
+    """
+    Creates and returns an asyncpg connection pool to the Supabase database.
+    SSL mode is required for Supabase.
+    """
+    connection_url = (
+        "postgresql://postgres.wnaqfhqvghulydvnpcsw:01769041694@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"
+        "?sslmode=require"
+    )
+    try:
+        pool = await asyncpg.create_pool(connection_url)
+        logger.info("✅ Database connection pool created successfully.")
+        return pool
+    except Exception as e:
+        logger.error(f"❌ Failed to create database connection pool: {e}")
+        raise
+
+# --- Global Pool ---
+pool = None
+
+@app.on_event("startup")
+async def startup_event():
+    global pool
+    pool = await get_db_connection_pool()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if pool:
+        await pool.close()
+        logger.info("🔒 Database connection pool closed.")
+
+@app.get("/")
+async def read_root():
+    return {"message": "🚀 FastAPI is running and connected to Supabase"}
+
+# --- Pydantic Models ---
+class ThreeDModel(BaseModel):
+    model_id: int
+    created_at: datetime
+    product_id: Optional[int] = None
+    file_format: Optional[str] = None
+    url: Optional[str] = None
+
+class ThreeDModelCreate(BaseModel):
+    product_id: Optional[int] = None
+    file_format: Optional[str] = None
+    url: Optional[str] = None
+
+# --- CRUD Endpoints ---
+@app.post("/3dmodels/", response_model=ThreeDModel)
+async def create_3d_model(model: ThreeDModelCreate):
+    async with pool.acquire() as connection:
+        try:
+            new_model = await connection.fetchrow(
+                "INSERT INTO public.3dmodels (product_id, file_format, url) VALUES ($1, $2, $3) RETURNING *",
+                model.product_id, model.file_format, model.url
+            )
+            if new_model:
+                return new_model
+        except asyncpg.exceptions.ForeignKeyViolationError:
+            raise HTTPException(status_code=400, detail="product_id does not exist")
+        except Exception as e:
+            logger.error(f"Error creating 3D model: {e}")
+            raise HTTPException(status_code=500, detail="Failed to create 3D model")
+
+@app.get("/3dmodels/", response_model=list[ThreeDModel])
+async def read_all_3d_models():
+    async with pool.acquire() as connection:
+        try:
+            models = await connection.fetch("SELECT * FROM public.3dmodels")
+            return models
+        except Exception as e:
+            logger.error(f"Error reading 3D models: {e}")
+            raise HTTPException(status_code=500, detail="Failed to retrieve 3D models")
+
+@app.get("/3dmodels/{model_id}", response_model=ThreeDModel)
+async def read_3d_model(model_id: int):
+    async with pool.acquire() as connection:
+        try:
+            model = await connection.fetchrow("SELECT * FROM public.3dmodels WHERE model_id = $1", model_id)
+            if model:
+                return model
+        except Exception as e:
+            logger.error(f"Error reading 3D model {model_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to retrieve 3D model")
+    raise HTTPException(status_code=404, detail="3D model not found")
+
+@app.put("/3dmodels/{model_id}", response_model=ThreeDModel)
+async def update_3d_model(model_id: int, model: ThreeDModelCreate):
+    async with pool.acquire() as connection:
+        try:
+            updated_model = await connection.fetchrow(
+                "UPDATE public.3dmodels SET product_id = $1, file_format = $2, url = $3 WHERE model_id = $4 RETURNING *",
+                model.product_id, model.file_format, model.url, model_id
+            )
+            if updated_model:
+                return updated_model
+        except asyncpg.exceptions.ForeignKeyViolationError:
+            raise HTTPException(status_code=400, detail="product_id does not exist")
+        except Exception as e:
+            logger.error(f"Error updating 3D model {model_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to update 3D model")
+    raise HTTPException(status_code=404, detail="3D model not found")
+
+@app.delete("/3dmodels/{model_id}")
+async def delete_3d_model(model_id: int):
+    async with pool.acquire() as connection:
+        try:
+            result = await connection.execute("DELETE FROM public.3dmodels WHERE model_id = $1", model_id)
+            if result == "DELETE 1":
+                return {"message": "🗑️ 3D model deleted successfully"}
+        except Exception as e:
+            logger.error(f"Error deleting 3D model {model_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to delete 3D model")
+    raise HTTPException(status_code=404, detail="3D model not found")

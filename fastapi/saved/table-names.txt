@@ -1,0 +1,20 @@
+
+Serial	Table Name	Foreign Keys
+1	users	None
+2	products	None
+3	referral	users
+4	reports	users
+5	reviews	users, product
+6	sellers	users
+7	promotions	sellers
+8	product	sellers, category (assumed from category_id)
+9	product_img	product
+10	stock	product
+11	wishlist	product, users
+12	try_on_history	product, users
+13	3dmodels	product
+14	orders	product (⚠️ seems incorrect — likely should be users)
+15	order_items	orders, product
+16	payments	orders
+17	refunds	orders
+18	user_auth	users
