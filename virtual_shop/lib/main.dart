@@ -1,17 +1,21 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:virtual_shop/pages/home_page.dart';
 import 'package:virtual_shop/pages/landing_page.dart';
 import 'package:virtual_shop/utils/theme.dart';
+import 'package:virtual_shop/widgets/auth_gate.dart';
+import 'package:virtual_shop/pages/complete_profile_page.dart';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-import 'firebase_options.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await Supabase.initialize(
+    url: dotenv.env['SUPABASE_URL']!,
+    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+  );
   runApp(const MyApp());
 }
 
@@ -24,7 +28,16 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: lightTheme,
       darkTheme: darkTheme,
-      home: const LandingPage(),
+      routes: {
+        '/complete_profile': (context) {
+          final args =
+              ModalRoute.of(context)?.settings.arguments
+                  as Map<String, dynamic>?;
+          final email = args != null ? args['email'] as String? : null;
+          return CompleteProfilePage(email: email ?? '');
+        },
+      },
+      home: const AuthGate(signedIn: HomePage(), signedOut: LandingPage()),
     );
   }
 }
