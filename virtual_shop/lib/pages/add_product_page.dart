@@ -65,11 +65,11 @@ class _AddProductPageState extends State<AddProductPage> {
             ),
           ),
         ),
-        title: const Text(
+        title: Text(
           'Add New Product',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 20,
+            fontSize: MediaQuery.of(context).size.width > 600 ? 22 : 20,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -110,10 +110,17 @@ class _AddProductPageState extends State<AddProductPage> {
       body: Form(
         key: _formKey,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          padding: EdgeInsets.symmetric(
+            horizontal: MediaQuery.of(context).size.width > 768 
+                ? MediaQuery.of(context).size.width * 0.2 
+                : 20,
+            vertical: 20,
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 800),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               // Product Images Section
               _buildImageSection(),
               const SizedBox(height: 24),
@@ -146,65 +153,140 @@ class _AddProductPageState extends State<AddProductPage> {
                 },
               ),
               const SizedBox(height: 16),
-              _buildDropdown(
-                label: 'Category',
-                value: _selectedCategory,
-                items: _categories,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCategory = value!;
-                  });
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  bool isWideScreen = constraints.maxWidth > 600;
+                  return isWideScreen 
+                      ? Row(
+                          children: [
+                            Expanded(
+                              child: _buildDropdown(
+                                label: 'Category',
+                                value: _selectedCategory,
+                                items: _categories,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _selectedCategory = value!;
+                                  });
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildTextField(
+                                controller: _brandController,
+                                label: 'Brand',
+                                hint: 'Enter brand name',
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            _buildDropdown(
+                              label: 'Category',
+                              value: _selectedCategory,
+                              items: _categories,
+                              onChanged: (value) {
+                                setState(() {
+                                  _selectedCategory = value!;
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _brandController,
+                              label: 'Brand',
+                              hint: 'Enter brand name',
+                            ),
+                          ],
+                        );
                 },
-              ),
-              const SizedBox(height: 16),
-              _buildTextField(
-                controller: _brandController,
-                label: 'Brand',
-                hint: 'Enter brand name',
               ),
               const SizedBox(height: 24),
               
               // Pricing & Stock
               _buildSectionTitle('Pricing & Stock'),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _priceController,
-                      label: 'Price (৳)',
-                      hint: '0.00',
-                      keyboardType: TextInputType.number,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter price';
-                        }
-                        if (double.tryParse(value) == null) {
-                          return 'Please enter valid price';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildTextField(
-                      controller: _stockController,
-                      label: 'Stock Quantity',
-                      hint: '0',
-                      keyboardType: TextInputType.number,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter stock';
-                        }
-                        if (int.tryParse(value) == null) {
-                          return 'Please enter valid quantity';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                ],
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  bool isWideScreen = constraints.maxWidth > 600;
+                  return isWideScreen 
+                      ? Row(
+                          children: [
+                            Expanded(
+                              child: _buildTextField(
+                                controller: _priceController,
+                                label: 'Price (৳)',
+                                hint: '0.00',
+                                keyboardType: TextInputType.number,
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please enter price';
+                                  }
+                                  if (double.tryParse(value) == null) {
+                                    return 'Please enter valid price';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildTextField(
+                                controller: _stockController,
+                                label: 'Stock Quantity',
+                                hint: '0',
+                                keyboardType: TextInputType.number,
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please enter stock';
+                                  }
+                                  if (int.tryParse(value) == null) {
+                                    return 'Please enter valid quantity';
+                                  }
+                                  return null;
+                                },
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            _buildTextField(
+                              controller: _priceController,
+                              label: 'Price (৳)',
+                              hint: '0.00',
+                              keyboardType: TextInputType.number,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please enter price';
+                                }
+                                if (double.tryParse(value) == null) {
+                                  return 'Please enter valid price';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _stockController,
+                              label: 'Stock Quantity',
+                              hint: '0',
+                              keyboardType: TextInputType.number,
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please enter stock';
+                                }
+                                if (int.tryParse(value) == null) {
+                                  return 'Please enter valid quantity';
+                                }
+                                return null;
+                              },
+                            ),
+                          ],
+                        );
+                },
               ),
               const SizedBox(height: 16),
               _buildDropdown(
@@ -222,17 +304,47 @@ class _AddProductPageState extends State<AddProductPage> {
               // Product Details
               _buildSectionTitle('Product Details'),
               const SizedBox(height: 16),
-              _buildTextField(
-                controller: _weightController,
-                label: 'Weight (kg)',
-                hint: '0.0',
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 16),
-              _buildTextField(
-                controller: _dimensionsController,
-                label: 'Dimensions (L x W x H cm)',
-                hint: 'e.g., 20 x 15 x 10',
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  bool isWideScreen = constraints.maxWidth > 600;
+                  return isWideScreen 
+                      ? Row(
+                          children: [
+                            Expanded(
+                              child: _buildTextField(
+                                controller: _weightController,
+                                label: 'Weight (kg)',
+                                hint: '0.0',
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _buildTextField(
+                                controller: _dimensionsController,
+                                label: 'Dimensions (L x W x H cm)',
+                                hint: 'e.g., 20 x 15 x 10',
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            _buildTextField(
+                              controller: _weightController,
+                              label: 'Weight (kg)',
+                              hint: '0.0',
+                              keyboardType: TextInputType.number,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _dimensionsController,
+                              label: 'Dimensions (L x W x H cm)',
+                              hint: 'e.g., 20 x 15 x 10',
+                            ),
+                          ],
+                        );
+                },
               ),
               const SizedBox(height: 24),
               
@@ -262,12 +374,17 @@ class _AddProductPageState extends State<AddProductPage> {
               const SizedBox(height: 32),
               
               // Save Button
-              SizedBox(
+              Container(
                 width: double.infinity,
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width > 600 ? 400 : double.infinity,
+                ),
                 child: GestureDetector(
                   onTap: _saveProduct,
                   child: Container(
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.all(
+                      MediaQuery.of(context).size.width > 600 ? 18 : 16,
+                    ),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [Color(0xff667eea), Color(0xff764ba2)],
@@ -287,12 +404,12 @@ class _AddProductPageState extends State<AddProductPage> {
                               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           )
-                        : const Text(
+                        : Text(
                             'Add Product',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 16,
+                              fontSize: MediaQuery.of(context).size.width > 600 ? 18 : 16,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -300,6 +417,7 @@ class _AddProductPageState extends State<AddProductPage> {
                 ),
               ),
             ],
+            ),
           ),
         ),
       ),
@@ -342,7 +460,7 @@ class _AddProductPageState extends State<AddProductPage> {
             GestureDetector(
               onTap: _pickImages,
               child: Container(
-                height: 200,
+                height: MediaQuery.of(context).size.width > 600 ? 250 : 200,
                 decoration: BoxDecoration(
                   color: Colors.grey[800],
                   borderRadius: BorderRadius.circular(12),
@@ -350,30 +468,30 @@ class _AddProductPageState extends State<AddProductPage> {
                     color: const Color(0xff667eea).withOpacity(0.5),
                   ),
                 ),
-                child: const Center(
+                child: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
                         Icons.cloud_upload_outlined,
-                        color: Color(0xff667eea),
-                        size: 48,
+                        color: const Color(0xff667eea),
+                        size: MediaQuery.of(context).size.width > 600 ? 56 : 48,
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       Text(
                         'Upload Product Images',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 16,
+                          fontSize: MediaQuery.of(context).size.width > 600 ? 18 : 16,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      SizedBox(height: 8),
+                      const SizedBox(height: 8),
                       Text(
                         'Add up to 5 images',
                         style: TextStyle(
                           color: Colors.grey,
-                          fontSize: 14,
+                          fontSize: MediaQuery.of(context).size.width > 600 ? 16 : 14,
                         ),
                       ),
                     ],
@@ -384,48 +502,59 @@ class _AddProductPageState extends State<AddProductPage> {
           else
             Column(
               children: [
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                    childAspectRatio: 1,
-                  ),
-                  itemCount: _selectedImages.length,
-                  itemBuilder: (context, index) {
-                    return Stack(
-                      children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            image: DecorationImage(
-                              image: FileImage(_selectedImages[index]),
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ),
-                        Positioned(
-                          top: 4,
-                          right: 4,
-                          child: GestureDetector(
-                            onTap: () => _removeImage(index),
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(
-                                color: Colors.red,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.close,
-                                color: Colors.white,
-                                size: 16,
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    int crossAxisCount = 3;
+                    if (constraints.maxWidth > 600) {
+                      crossAxisCount = 5;
+                    } else if (constraints.maxWidth > 400) {
+                      crossAxisCount = 4;
+                    }
+                    
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                        childAspectRatio: 1,
+                      ),
+                      itemCount: _selectedImages.length,
+                      itemBuilder: (context, index) {
+                        return Stack(
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                image: DecorationImage(
+                                  image: FileImage(_selectedImages[index]),
+                                  fit: BoxFit.cover,
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                      ],
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: GestureDetector(
+                                onTap: () => _removeImage(index),
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.close,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     );
                   },
                 ),
@@ -471,9 +600,9 @@ class _AddProductPageState extends State<AddProductPage> {
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
-      style: const TextStyle(
+      style: TextStyle(
         color: Colors.white,
-        fontSize: 20,
+        fontSize: MediaQuery.of(context).size.width > 600 ? 22 : 20,
         fontWeight: FontWeight.bold,
       ),
     );
@@ -492,9 +621,9 @@ class _AddProductPageState extends State<AddProductPage> {
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             color: Colors.white,
-            fontSize: 16,
+            fontSize: MediaQuery.of(context).size.width > 600 ? 18 : 16,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -540,9 +669,9 @@ class _AddProductPageState extends State<AddProductPage> {
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             color: Colors.white,
-            fontSize: 16,
+            fontSize: MediaQuery.of(context).size.width > 600 ? 18 : 16,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -593,9 +722,9 @@ class _AddProductPageState extends State<AddProductPage> {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
+                    fontSize: MediaQuery.of(context).size.width > 600 ? 18 : 16,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -604,7 +733,7 @@ class _AddProductPageState extends State<AddProductPage> {
                   subtitle,
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.7),
-                    fontSize: 14,
+                    fontSize: MediaQuery.of(context).size.width > 600 ? 16 : 14,
                   ),
                 ),
               ],
