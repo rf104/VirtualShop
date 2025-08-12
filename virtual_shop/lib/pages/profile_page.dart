@@ -5,6 +5,7 @@ import 'package:virtual_shop/pages/virtual_closet.dart';
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/models/closet.dart';
 import 'edit_profile_final.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -86,7 +87,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // Closet model
 
-  List<Closet> _closets = [
+  final List<Closet> _closets = [
     Closet(
       name: "Summer Outfits",
       image: "assets/images/hat.jpg",
@@ -480,25 +481,45 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
         const SizedBox(height: 10),
-        ElevatedButton.icon(
-          onPressed: () {
-            showDialog(
-              context: context,
-              builder: (context) => const EditProfileFinal(),
-              barrierDismissible: false,
-            );
-          },
-          icon: const Icon(Icons.edit, color: Colors.white),
-          label: const Text(
-            'Edit Profile',
-            style: TextStyle(color: Colors.white),
-          ),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.white.withOpacity(0.2),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            ElevatedButton.icon(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => const EditProfileFinal(),
+                  barrierDismissible: false,
+                );
+              },
+              icon: const Icon(Icons.edit, color: Colors.white),
+              label: const Text(
+                'Edit Profile',
+                style: TextStyle(color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white.withOpacity(0.2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            ElevatedButton.icon(
+              onPressed: () => _handleSignOut(context),
+              icon: const Icon(Icons.logout, color: Colors.white),
+              label: const Text(
+                'Sign Out',
+                style: TextStyle(color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white.withOpacity(0.2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 20),
         FittedBox(
@@ -593,5 +614,19 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ),
     );
+  }
+
+  Future<void> _handleSignOut(BuildContext context) async {
+    try {
+      await Supabase.instance.client.auth.signOut();
+      if (!mounted) return;
+      // Return to root so AuthGate renders signedOut UI
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Sign out failed: $e')));
+    }
   }
 }

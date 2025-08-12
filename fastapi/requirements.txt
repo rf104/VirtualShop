@@ -1,0 +1,10 @@
+# FastAPI requirements
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+asyncpg>=0.28.0
+pillow>=10.0.0
+sentence-transformers>=2.2.0
+vecs>=0.4.0
+matplotlib>=3.7.0

@@ -78,6 +78,8 @@ class _ShopScreenshotsWidgetState extends State<ShopScreenshotsWidget> {
 
     final Uint8List imageBytes = await pickedFile.readAsBytes();
 
+    //need to convert base64
+
     if (!mounted) return;
     Navigator.push(
       context,

@@ -6,7 +6,7 @@ from routers import (
     users, product, products, orders, payments, referral,
     refunds, reports, reviews, sellers, wishlist,
     stock, promotions, product_img, order_items,
-    try_on_history, user_auth, model3d
+    try_on_history, user_auth, model3d, image_search
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -47,3 +47,4 @@ app.include_router(product_img.router, prefix="/product-images", tags=["Product 
 app.include_router(try_on_history.router, prefix="/try-on", tags=["Try-On History"])
 app.include_router(user_auth.router, prefix="/auth", tags=["User Authentication"])
 app.include_router(model3d.router, prefix="/model3d", tags=["3D Models"])
+app.include_router(image_search.router, prefix="/image-search", tags=["Image Search"])

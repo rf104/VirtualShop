@@ -1,10 +1,10 @@
 import 'package:email_validator/email_validator.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:virtual_shop/pages/home_page.dart';
-import 'package:virtual_shop/pages/seller_dashboard_page.dart';
 import 'package:virtual_shop/widgets/terms_conditions_dialog.dart';
+import 'package:virtual_shop/utils/loading_overlay.dart';
+import 'package:virtual_shop/utils/supabase_service.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class AuthPage extends StatefulWidget {
   final int initialPage; // 0 for login, 1 for signup
@@ -17,8 +17,6 @@ class AuthPage extends StatefulWidget {
 
 class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
   late PageController _pageController;
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
 
   int currentPage = 0;
 
@@ -41,6 +39,7 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
   bool isConfirmPasswordVisible = false;
   bool agreeToTerms = false;
   String signupErrorMessage = '';
+  bool _isLoading = false;
 
   // Add these new variables
   String selectedGender = '';
@@ -52,20 +51,11 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     super.initState();
     currentPage = widget.initialPage;
     _pageController = PageController(initialPage: widget.initialPage);
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
-    );
-    _animationController.forward();
   }
 
   @override
   void dispose() {
     _pageController.dispose();
-    _animationController.dispose();
     _loginEmailController.dispose();
     _loginPasswordController.dispose();
     _signupNameController.dispose();
@@ -87,144 +77,134 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
     );
   }
 
-  // Login logic - Modified to go directly to home page
-  void login() async {
-    // Direct navigation to HomePage without authentication
-    Navigator.pushReplacement(
-      context,
-      // MaterialPageRoute(builder: (context) => const HomePage()),
-      MaterialPageRoute(builder: (context) => const HomePage()),
-    );
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Login successful!')));
-
-    /* COMMENTED OUT - Original authentication code
+  // Login with Supabase
+  Future<void> login() async {
     try {
-      String email = _loginEmailController.text;
-      String password = _loginPasswordController.text;
-
-      // Commented out as requested
-      // if (email.isEmpty || password.isEmpty) {
-      //   setState(() {
-      //     loginErrorMessage = 'Please enter both email and password';
-      //   });
-      //   return;
-      // }
-
-      bool isValid = EmailValidator.validate(email);
-      if (!isValid) {
-        setState(() {
-          loginErrorMessage = 'Please enter a valid email address';
-        });
-        return;
-      }
-
-      await FirebaseAuth.instance.signInWithEmailAndPassword(email: email, password: password);
       setState(() {
+        _isLoading = true;
         loginErrorMessage = '';
       });
-      // Navigate to HomePage after successful login
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomePage()),
+      final email = _loginEmailController.text.trim();
+      final password = _loginPasswordController.text;
+      if (!EmailValidator.validate(email) || password.isEmpty) {
+        setState(() => loginErrorMessage = 'Enter valid credentials');
+        return;
+      }
+      final res = await SupabaseService.signInWithEmail(
+        email: email,
+        password: password,
       );
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Login successful!')),
-      );
-    } on FirebaseAuthException catch (e) {
-      setState(() {
-        loginErrorMessage = e.message ?? 'Invalid email or password';
-      });
+      if (res.session != null) {
+        if (!mounted) return;
+        // Let AuthGate handle profile creation and completeness redirect
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomePage()),
+        );
+      }
+    } catch (e) {
+      setState(() => loginErrorMessage = e.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
-    */
   }
 
-  // Signup logic
-  void register() async {
+  // Signup logic with Supabase + profile
+  Future<void> register() async {
     try {
-      String name = _signupNameController.text;
-      String email = _signupEmailController.text;
-      String password = _signupPasswordController.text;
+      setState(() {
+        _isLoading = true;
+        signupErrorMessage = '';
+      });
+      final name = _signupNameController.text.trim();
+      final email = _signupEmailController.text.trim();
+      final password = _signupPasswordController.text;
 
       if (name.isEmpty || email.isEmpty || password.isEmpty) {
-        setState(() {
-          signupErrorMessage = 'Please fill in all fields';
-        });
+        setState(() => signupErrorMessage = 'Please fill in all fields');
         return;
       }
-
       if (selectedGender.isEmpty) {
-        setState(() {
-          signupErrorMessage = 'Please select your gender';
-        });
+        setState(() => signupErrorMessage = 'Please select your gender');
         return;
       }
-
       if (_dateOfBirthController.text.isEmpty) {
-        setState(() {
-          signupErrorMessage = 'Please select your date of birth';
-        });
+        setState(() => signupErrorMessage = 'Please select your date of birth');
+        return;
+      }
+      if (!EmailValidator.validate(email)) {
+        setState(
+          () => signupErrorMessage = 'Please enter a valid email address',
+        );
         return;
       }
 
-      bool isValid = EmailValidator.validate(email);
-      if (!isValid) {
-        setState(() {
-          signupErrorMessage = 'Please enter a valid email address';
-        });
-        return;
-      }
+      final res = await SupabaseService.signUpWithEmail(
+        email: email,
+        password: password,
+        metadata: {
+          'name': name,
+          'gender': selectedGender,
+          'dob': selectedDate?.toIso8601String(),
+          'user_type': selectedUserType,
+        },
+      );
 
-      UserCredential userCredential = await FirebaseAuth.instance
-          .createUserWithEmailAndPassword(email: email, password: password);
-
-      User? user = userCredential.user;
-      if (user != null) {
-        await user.updateDisplayName(name);
-
-        // Here you can store additional user data (gender, date of birth, user type)
-        // in Firestore or your preferred database
-
-        if (!user.emailVerified) {
-          await user.sendEmailVerification();
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Verify your email'),
-              content: const Text(
-                'A verification link has been sent to your email. Please verify before logging in.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    _animateToPage(0); // Go to login page
-                  },
-                  child: const Text('OK'),
-                ),
-              ],
+      if (res.user != null) {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Verify your email'),
+            content: const Text(
+              'A verification link has been sent to your email. Please verify before logging in.',
             ),
-          );
-        }
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _animateToPage(0);
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
       }
-    } on FirebaseAuthException catch (e) {
-      setState(() {
-        signupErrorMessage = e.message ?? 'An error occurred';
-      });
+    } catch (e) {
+      setState(() => signupErrorMessage = e.toString());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<bool> googleAuth() async {
-    final user = await GoogleSignIn().signIn();
-    if (user == null) return false;
-    GoogleSignInAuthentication userAuth = await user.authentication;
-    var credential = GoogleAuthProvider.credential(
-      accessToken: userAuth.accessToken,
-      idToken: userAuth.idToken,
-    );
-    await FirebaseAuth.instance.signInWithCredential(credential);
-    return FirebaseAuth.instance.currentUser != null;
+    try {
+      setState(() => _isLoading = true);
+      final webClientId = dotenv.env['GOOGLE_WEB_CLIENT_ID'] ?? '';
+      final iosClientId = dotenv.env['GOOGLE_IOS_CLIENT_ID'];
+      final res = await SupabaseService.signInWithGoogle(
+        webClientId: webClientId,
+        iosClientId: iosClientId,
+      );
+      if (res.session != null) {
+        if (!mounted) return false;
+        // Let AuthGate handle profile creation and completeness redirect
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomePage()),
+        );
+        return true;
+      }
+      return false;
+    } catch (e) {
+      setState(() => loginErrorMessage = e.toString());
+      return false;
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   // Add this method for date selection
@@ -463,233 +443,238 @@ class _AuthPageState extends State<AuthPage> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF2C2C2E),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Top section with dynamic title
-            Container(
-              height: MediaQuery.of(context).size.height * 0.35,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF2C2C2E),
-                    Color(0xFF1C1C1E),
-                    Color(0xFF000000),
-                  ],
-                  stops: [0.0, 0.6, 1.0],
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  children: [
-                    // Back button
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.arrow_back,
-                            color: Colors.white,
-                          ),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-                    // Dynamic title text with smooth transition
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 400),
-                          transitionBuilder:
-                              (Widget child, Animation<double> animation) {
-                                return SlideTransition(
-                                  position: Tween<Offset>(
-                                    begin: const Offset(0.3, 0),
-                                    end: Offset.zero,
-                                  ).animate(animation),
-                                  child: FadeTransition(
-                                    opacity: animation,
-                                    child: child,
-                                  ),
-                                );
-                              },
-                          child: SingleChildScrollView(
-                            child: Column(
-                              key: ValueKey<int>(currentPage),
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  currentPage == 0
-                                      ? 'Welcome back!\nSign in to continue'
-                                      : 'Ready to dive in?\nCreate your account',
-                                  style: const TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                    height: 1.2,
-                                  ),
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  currentPage == 0
-                                      ? 'Sign in to enjoy the best shopping experience'
-                                      : 'Join us today and start your shopping journey',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.white.withOpacity(0.7),
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // White bottom section
-            Expanded(
-              child: Container(
-                width: double.infinity,
+      body: LoadingOverlay(
+        isLoading: _isLoading,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Top section with dynamic title
+              Container(
+                height: MediaQuery.of(context).size.height * 0.35,
                 decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(30),
-                    topRight: Radius.circular(30),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF2C2C2E),
+                      Color(0xFF1C1C1E),
+                      Color(0xFF000000),
+                    ],
+                    stops: [0.0, 0.6, 1.0],
                   ),
                 ),
-                child: Column(
-                  children: [
-                    const SizedBox(height: 20),
-
-                    // Animated tab selector
-                    Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 20),
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8F8F8),
-                        borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    children: [
+                      // Back button
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: IconButton(
+                            icon: const Icon(
+                              Icons.arrow_back,
+                              color: Colors.white,
+                            ),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                        ),
                       ),
-                      child: Stack(
-                        children: [
-                          // Animated indicator
-                          AnimatedPositioned(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOutCubic,
-                            left: currentPage == 0
-                                ? 4
-                                : MediaQuery.of(context).size.width * 0.5 - 24,
-                            top: 4,
-                            bottom: 4,
-                            width: MediaQuery.of(context).size.width * 0.5 - 24,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(10),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.05),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
+                      const SizedBox(height: 40),
+                      // Dynamic title text with smooth transition
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 400),
+                            transitionBuilder:
+                                (Widget child, Animation<double> animation) {
+                                  return SlideTransition(
+                                    position: Tween<Offset>(
+                                      begin: const Offset(0.3, 0),
+                                      end: Offset.zero,
+                                    ).animate(animation),
+                                    child: FadeTransition(
+                                      opacity: animation,
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                            child: SingleChildScrollView(
+                              child: Column(
+                                key: ValueKey<int>(currentPage),
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    currentPage == 0
+                                        ? 'Welcome back!\nSign in to continue'
+                                        : 'Ready to dive in?\nCreate your account',
+                                    style: const TextStyle(
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                      height: 1.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    currentPage == 0
+                                        ? 'Sign in to enjoy the best shopping experience'
+                                        : 'Join us today and start your shopping journey',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.white.withOpacity(0.7),
+                                      height: 1.4,
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                           ),
-                          // Tab buttons
-                          Row(
-                            children: [
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () => _animateToPage(0),
-                                  child: Container(
-                                    height: 50,
-                                    margin: const EdgeInsets.all(4),
-                                    child: Center(
-                                      child: AnimatedDefaultTextStyle(
-                                        duration: const Duration(
-                                          milliseconds: 200,
-                                        ),
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: currentPage == 0
-                                              ? FontWeight.w600
-                                              : FontWeight.w500,
-                                          color: currentPage == 0
-                                              ? Colors.black
-                                              : Colors.grey[600],
-                                        ),
-                                        child: const Text('Login'),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: GestureDetector(
-                                  onTap: () => _animateToPage(1),
-                                  child: Container(
-                                    height: 50,
-                                    margin: const EdgeInsets.all(4),
-                                    child: Center(
-                                      child: AnimatedDefaultTextStyle(
-                                        duration: const Duration(
-                                          milliseconds: 200,
-                                        ),
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: currentPage == 1
-                                              ? FontWeight.w600
-                                              : FontWeight.w500,
-                                          color: currentPage == 1
-                                              ? Colors.black
-                                              : Colors.grey[600],
-                                        ),
-                                        child: const Text('Register'),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-
-                    const SizedBox(height: 25),
-
-                    // PageView for smooth transitions
-                    Expanded(
-                      child: PageView(
-                        controller: _pageController,
-                        onPageChanged: (index) {
-                          setState(() {
-                            currentPage = index;
-                          });
-                        },
-                        children: [_buildLoginPage(), _buildSignupPage()],
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+
+              // White bottom section
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(30),
+                      topRight: Radius.circular(30),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 20),
+
+                      // Animated tab selector
+                      Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 20),
+                        height: 50,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8F8F8),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Stack(
+                          children: [
+                            // Animated indicator
+                            AnimatedPositioned(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeInOutCubic,
+                              left: currentPage == 0
+                                  ? 4
+                                  : MediaQuery.of(context).size.width * 0.5 -
+                                        24,
+                              top: 4,
+                              bottom: 4,
+                              width:
+                                  MediaQuery.of(context).size.width * 0.5 - 24,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(10),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.05),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            // Tab buttons
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () => _animateToPage(0),
+                                    child: Container(
+                                      height: 50,
+                                      margin: const EdgeInsets.all(4),
+                                      child: Center(
+                                        child: AnimatedDefaultTextStyle(
+                                          duration: const Duration(
+                                            milliseconds: 200,
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: currentPage == 0
+                                                ? FontWeight.w600
+                                                : FontWeight.w500,
+                                            color: currentPage == 0
+                                                ? Colors.black
+                                                : Colors.grey[600],
+                                          ),
+                                          child: const Text('Login'),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () => _animateToPage(1),
+                                    child: Container(
+                                      height: 50,
+                                      margin: const EdgeInsets.all(4),
+                                      child: Center(
+                                        child: AnimatedDefaultTextStyle(
+                                          duration: const Duration(
+                                            milliseconds: 200,
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: currentPage == 1
+                                                ? FontWeight.w600
+                                                : FontWeight.w500,
+                                            color: currentPage == 1
+                                                ? Colors.black
+                                                : Colors.grey[600],
+                                          ),
+                                          child: const Text('Register'),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 25),
+
+                      // PageView for smooth transitions
+                      Expanded(
+                        child: PageView(
+                          controller: _pageController,
+                          onPageChanged: (index) {
+                            setState(() {
+                              currentPage = index;
+                            });
+                          },
+                          children: [_buildLoginPage(), _buildSignupPage()],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
