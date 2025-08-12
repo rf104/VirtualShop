@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:virtual_shop/pages/add_product_page.dart';
-import 'package:virtual_shop/pages/all_review_page.dart';
-import 'package:virtual_shop/pages/all_transactions_page.dart';
-import 'package:virtual_shop/pages/analytics_details_page.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+// Pages are pushed via named routes inside SellerShell's nested Navigator.
 import 'package:virtual_shop/pages/my_products_sheet.dart';
-import 'package:virtual_shop/pages/shop_profile_page.dart';
 
 class SellerDashboardPage extends StatefulWidget {
   const SellerDashboardPage({super.key});
@@ -16,6 +14,67 @@ class SellerDashboardPage extends StatefulWidget {
 
 class _SellerDashboardPageState extends State<SellerDashboardPage> {
   String _selectedPeriod = "Monthly";
+  String _displayName = 'Seller';
+  ImageProvider? _avatarProvider;
+
+  Map<String, String>? _headersForUrl(String url) {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) return null;
+    if (url.contains('supabase.co') && url.contains('/storage/v1/object/')) {
+      return {'Authorization': 'Bearer ${session.accessToken}'};
+    }
+    return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAuthUser();
+  }
+
+  Future<void> _loadAuthUser() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+      final meta = user.userMetadata ?? {};
+      final dynamic nameCandidate =
+          meta['name'] ?? meta['fullName'] ?? user.email;
+      final dynamic avatarCandidate =
+          meta['avatar_url_custom'] ?? meta['picture'] ?? meta['avatarUrl'];
+
+      String resolvedName =
+          nameCandidate is String && nameCandidate.trim().isNotEmpty
+          ? nameCandidate.trim()
+          : 'Seller';
+
+      if (avatarCandidate is String && avatarCandidate.trim().isNotEmpty) {
+        final url = avatarCandidate.trim();
+        final provider = CachedNetworkImageProvider(
+          url,
+          cacheKey: url,
+          headers: _headersForUrl(url),
+          maxHeight: 150,
+        );
+        if (!mounted) return;
+        setState(() {
+          _displayName = resolvedName;
+          _avatarProvider = provider;
+        });
+        // Warm the image cache; ignore failures silently
+        // (e.g., if headers are invalid or URL is unreachable).
+        // This keeps build fast and avoids jank when first painting avatar.
+        // ignore: discarded_futures
+        precacheImage(provider, context).catchError((_) {});
+      } else {
+        if (!mounted) return;
+        setState(() {
+          _displayName = resolvedName;
+        });
+      }
+    } catch (_) {
+      // Leave defaults on error
+    }
+  }
 
   String _getCurrentDateFormatted() {
     final now = DateTime.now();
@@ -33,31 +92,57 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
             // Top bar with dark theme
             Row(
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 10),
-                    Text(
-                      _getCurrentDateFormatted(), // Use actual date
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
-                        letterSpacing: 1,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 10),
+                      Text(
+                        _getCurrentDateFormatted(), // Use actual date
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          letterSpacing: 1,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      "Hi, Urban Drift",
-                      style: TextStyle(
-                        fontSize: MediaQuery.of(context).size.width * 0.075, // Responsive font size
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                      const SizedBox(height: 10),
+                      Text(
+                        "Hi, $_displayName",
+                        softWrap: true,
+                        maxLines: 2,
+                        style: TextStyle(
+                          fontSize:
+                              MediaQuery.of(context).size.width *
+                              0.075, // Responsive font size
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
+                // Sign out button
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: IconButton(
+                    tooltip: 'Sign out',
+                    icon: const Icon(Icons.logout, color: Colors.white),
+                    onPressed: () => _handleSignOut(context),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
@@ -72,16 +157,14 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                   ),
                   child: GestureDetector(
                     onTap: () {
-                      Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const ShopProfilePage(),
-                      ),
-                      );
+                      Navigator.of(context).pushNamed('shop_profile');
                     },
-                    child: const CircleAvatar(
+                    child: CircleAvatar(
                       radius: 25,
-                      backgroundImage: AssetImage("assets/images/shopLogo.png"),
+                      backgroundImage:
+                          _avatarProvider ??
+                          const AssetImage('assets/images/profile2.jpg'),
+                      backgroundColor: Colors.grey[800],
                     ),
                   ),
                 ),
@@ -110,11 +193,14 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                         child: Text(
                           "Analytics",
                           style: TextStyle(
-                            fontSize: MediaQuery.of(context).size.width * 0.05, // Responsive font size
+                            fontSize:
+                                MediaQuery.of(context).size.width *
+                                0.05, // Responsive font size
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
-                          overflow: TextOverflow.ellipsis,
+                          softWrap: true,
+                          maxLines: 2,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -148,7 +234,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
-                            fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
+                            fontSize:
+                                MediaQuery.of(context).size.width *
+                                0.03, // Responsive font size
                           ),
                           items: [
                             DropdownMenuItem(
@@ -158,7 +246,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
-                                  fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
+                                  fontSize:
+                                      MediaQuery.of(context).size.width *
+                                      0.03, // Responsive font size
                                 ),
                               ),
                             ),
@@ -169,7 +259,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
-                                  fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
+                                  fontSize:
+                                      MediaQuery.of(context).size.width *
+                                      0.03, // Responsive font size
                                 ),
                               ),
                             ),
@@ -180,7 +272,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
-                                  fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
+                                  fontSize:
+                                      MediaQuery.of(context).size.width *
+                                      0.03, // Responsive font size
                                 ),
                               ),
                             ),
@@ -226,9 +320,12 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w600,
-                              fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
+                              fontSize:
+                                  MediaQuery.of(context).size.width *
+                                  0.04, // Responsive font size
                             ),
-                            overflow: TextOverflow.ellipsis,
+                            softWrap: true,
+                            maxLines: 2,
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -246,7 +343,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
-                              fontSize: MediaQuery.of(context).size.width * 0.025, // Responsive font size
+                              fontSize:
+                                  MediaQuery.of(context).size.width *
+                                  0.025, // Responsive font size
                             ),
                           ),
                         ),
@@ -313,10 +412,13 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                           "$_selectedPeriod Earnings",
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: MediaQuery.of(context).size.width * 0.055, // Responsive font size
+                            fontSize:
+                                MediaQuery.of(context).size.width *
+                                0.055, // Responsive font size
                             color: Colors.white,
                           ),
-                          overflow: TextOverflow.ellipsis,
+                          softWrap: true,
+                          maxLines: 2,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -324,11 +426,14 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                         child: Text(
                           _getTotalEarnings(),
                           style: TextStyle(
-                            fontSize: MediaQuery.of(context).size.width * 0.06, // Responsive font size
+                            fontSize:
+                                MediaQuery.of(context).size.width *
+                                0.06, // Responsive font size
                             fontWeight: FontWeight.bold,
                             color: const Color(0xff667eea),
                           ),
-                          overflow: TextOverflow.ellipsis,
+                          softWrap: true,
+                          maxLines: 2,
                         ),
                       ),
                     ],
@@ -338,18 +443,15 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                     "Total balance",
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.7),
-                      fontSize: MediaQuery.of(context).size.width * 0.035, // Responsive font size
+                      fontSize:
+                          MediaQuery.of(context).size.width *
+                          0.035, // Responsive font size
                     ),
                   ),
                   const SizedBox(height: 20),
                   GestureDetector(
                     onTap: () {
-                      Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => AnalyticsDetailsPage(),
-                      ),
-                      );
+                      Navigator.of(context).pushNamed('analytics_details');
                     },
                     child: Container(
                       decoration: BoxDecoration(
@@ -375,8 +477,14 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                           Text(
                                             "Earning in ",
                                             style: TextStyle(
-                                              color: Colors.white.withOpacity(0.8),
-                                              fontSize: MediaQuery.of(context).size.width * 0.035, // Responsive font size
+                                              color: Colors.white.withOpacity(
+                                                0.8,
+                                              ),
+                                              fontSize:
+                                                  MediaQuery.of(
+                                                    context,
+                                                  ).size.width *
+                                                  0.035, // Responsive font size
                                             ),
                                           ),
                                           Flexible(
@@ -385,7 +493,11 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                               style: TextStyle(
                                                 color: const Color(0xff667eea),
                                                 fontWeight: FontWeight.w600,
-                                                fontSize: MediaQuery.of(context).size.width * 0.035, // Responsive font size
+                                                fontSize:
+                                                    MediaQuery.of(
+                                                      context,
+                                                    ).size.width *
+                                                    0.035, // Responsive font size
                                               ),
                                               overflow: TextOverflow.ellipsis,
                                             ),
@@ -407,24 +519,34 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                     Expanded(
                                       child: Text(
                                         _getPeriodEarnings(),
+                                        softWrap: true,
+                                        maxLines: 2,
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
-                                          fontSize: MediaQuery.of(context).size.width * 0.06, // Responsive font size
+                                          fontSize:
+                                              MediaQuery.of(
+                                                context,
+                                              ).size.width *
+                                              0.06, // Responsive font size
                                           color: Colors.white,
                                         ),
-                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                     const SizedBox(width: 8),
                                     Flexible(
                                       child: Text(
                                         _getEarningsChange(),
+                                        softWrap: true,
+                                        maxLines: 2,
                                         style: TextStyle(
                                           color: const Color(0xff38A169),
-                                          fontSize: MediaQuery.of(context).size.width * 0.035, // Responsive font size
+                                          fontSize:
+                                              MediaQuery.of(
+                                                context,
+                                              ).size.width *
+                                              0.035, // Responsive font size
                                           fontWeight: FontWeight.w500,
                                         ),
-                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ],
@@ -434,7 +556,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                   "Tap to view detailed analytics",
                                   style: TextStyle(
                                     color: Colors.white.withOpacity(0.5),
-                                    fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
+                                    fontSize:
+                                        MediaQuery.of(context).size.width *
+                                        0.03, // Responsive font size
                                   ),
                                 ),
                               ],
@@ -490,12 +614,15 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                       Expanded(
                         child: Text(
                           "Recent Transaction",
+                          softWrap: true,
+                          maxLines: 2,
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: MediaQuery.of(context).size.width * 0.045, // Responsive font size
+                            fontSize:
+                                MediaQuery.of(context).size.width *
+                                0.045, // Responsive font size
                             color: Colors.white,
                           ),
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -519,7 +646,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 "See all",
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
+                                  fontSize:
+                                      MediaQuery.of(context).size.width *
+                                      0.03, // Responsive font size
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -568,7 +697,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
-                                  fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
+                                  fontSize:
+                                      MediaQuery.of(context).size.width *
+                                      0.04, // Responsive font size
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -576,7 +707,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 "Friday, 21 March",
                                 style: TextStyle(
                                   color: Colors.white.withOpacity(0.7),
-                                  fontSize: MediaQuery.of(context).size.width * 0.0325, // Responsive font size
+                                  fontSize:
+                                      MediaQuery.of(context).size.width *
+                                      0.0325, // Responsive font size
                                 ),
                               ),
                             ],
@@ -586,7 +719,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                           "৳2,000",
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
+                            fontSize:
+                                MediaQuery.of(context).size.width *
+                                0.04, // Responsive font size
                             color: const Color(0xff38A169),
                           ),
                         ),
@@ -626,7 +761,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w600,
-                                  fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
+                                  fontSize:
+                                      MediaQuery.of(context).size.width *
+                                      0.04, // Responsive font size
                                 ),
                               ),
                               const SizedBox(height: 2),
@@ -634,7 +771,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 "Thursday, 20 March",
                                 style: TextStyle(
                                   color: Colors.white.withOpacity(0.7),
-                                  fontSize: MediaQuery.of(context).size.width * 0.0325, // Responsive font size
+                                  fontSize:
+                                      MediaQuery.of(context).size.width *
+                                      0.0325, // Responsive font size
                                 ),
                               ),
                             ],
@@ -644,7 +783,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                           "৳1,500",
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
+                            fontSize:
+                                MediaQuery.of(context).size.width *
+                                0.04, // Responsive font size
                             color: const Color(0xff38A169),
                           ),
                         ),
@@ -675,7 +816,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                   GestureDetector(
                     onTap: () {
                       showModalBottomSheet(
-                      context: context,
+                        context: context,
                         isScrollControlled: true,
                         backgroundColor: Colors.transparent,
                         builder: (_) => const MyProductsSheet(),
@@ -706,7 +847,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 "My Products",
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
-                                  fontSize: MediaQuery.of(context).size.width * 0.05, // Responsive font size
+                                  fontSize:
+                                      MediaQuery.of(context).size.width *
+                                      0.05, // Responsive font size
                                   color: Colors.white,
                                 ),
                               ),
@@ -714,7 +857,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 "Manage your inventory",
                                 style: TextStyle(
                                   color: Colors.grey,
-                                  fontSize: MediaQuery.of(context).size.width * 0.035, // Responsive font size
+                                  fontSize:
+                                      MediaQuery.of(context).size.width *
+                                      0.035, // Responsive font size
                                 ),
                               ),
                             ],
@@ -733,7 +878,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                             "10",
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
+                              fontSize:
+                                  MediaQuery.of(context).size.width *
+                                  0.04, // Responsive font size
                               color: Colors.white,
                             ),
                           ),
@@ -752,12 +899,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                   // Add Product Button
                   GestureDetector(
                     onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const AddProductPage(),
-                        ),
-                      );
+                      Navigator.of(context).pushNamed('add_product');
                     },
                     child: Container(
                       width: double.infinity,
@@ -788,7 +930,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                             "Add New Product",
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
+                              fontSize:
+                                  MediaQuery.of(context).size.width *
+                                  0.04, // Responsive font size
                               color: Colors.white,
                             ),
                           ),
@@ -826,7 +970,10 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
                                 gradient: const LinearGradient(
-                                  colors: [Color(0xffFFD700), Color(0xffFFA500)],
+                                  colors: [
+                                    Color(0xffFFD700),
+                                    Color(0xffFFA500),
+                                  ],
                                 ),
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -925,7 +1072,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                     "4.8",
                                     style: TextStyle(
                                       color: Colors.white,
-                                      fontSize: MediaQuery.of(context).size.width * 0.07, // Responsive font size
+                                      fontSize:
+                                          MediaQuery.of(context).size.width *
+                                          0.07, // Responsive font size
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -950,7 +1099,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                         Text(
                                           "Based on 1,247 reviews",
                                           style: TextStyle(
-                                            color: Colors.white.withOpacity(0.7),
+                                            color: Colors.white.withOpacity(
+                                              0.7,
+                                            ),
                                             fontSize: 11,
                                           ),
                                         ),
@@ -975,7 +1126,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                             "Excellent",
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: MediaQuery.of(context).size.width * 0.025, // Responsive font size
+                              fontSize:
+                                  MediaQuery.of(context).size.width *
+                                  0.025, // Responsive font size
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -1009,27 +1162,29 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     );
   }
 
+  Future<void> _handleSignOut(BuildContext context) async {
+    try {
+      await Supabase.instance.client.auth.signOut();
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Sign out failed: $e')));
+    }
+  }
+
   // Show all transactions method
   void _showAllTransactions(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const AllTransactionsPage(),
-      ),
-    );
+    Navigator.of(context).pushNamed('transactions');
   }
 
   // Show all reviews method
   void _showAllReviews(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const AllReviewPage(),
-      ),
-    );
+    Navigator.of(context).pushNamed('reviews');
   }
 
-  
   // Helper methods for analytics data
   String _getSuccessRate() {
     switch (_selectedPeriod) {
@@ -1226,7 +1381,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
             onBackgroundImageError: (exception, stackTrace) {
               // Handle image loading error
             },
-            child: review['avatar'] == null 
+            child: review['avatar'] == null
                 ? const Icon(Icons.person, color: Colors.white, size: 20)
                 : null,
           ),
@@ -1359,7 +1514,9 @@ class _AnalyticsCard extends StatelessWidget {
                     percent,
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: MediaQuery.of(context).size.width * 0.04, // Responsive font size
+                      fontSize:
+                          MediaQuery.of(context).size.width *
+                          0.04, // Responsive font size
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -1384,7 +1541,9 @@ class _AnalyticsCard extends StatelessWidget {
               style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
-                fontSize: MediaQuery.of(context).size.width * 0.045, // Responsive font size
+                fontSize:
+                    MediaQuery.of(context).size.width *
+                    0.045, // Responsive font size
               ),
             ),
             const SizedBox(height: 8),
@@ -1401,7 +1560,9 @@ class _AnalyticsCard extends StatelessWidget {
               label,
               style: TextStyle(
                 color: Colors.white.withOpacity(0.9),
-                fontSize: MediaQuery.of(context).size.width * 0.03, // Responsive font size
+                fontSize:
+                    MediaQuery.of(context).size.width *
+                    0.03, // Responsive font size
                 fontWeight: FontWeight.w400,
               ),
             ),

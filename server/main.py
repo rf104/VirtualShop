@@ -31,7 +31,6 @@ async def shutdown_event():
 async def read_root():
     return {"message": "🚀 FastAPI is running and connected to Supabase"}
 
-# ✅ Include all routers
 app.include_router(users.router, prefix="/users", tags=["Users"])
 app.include_router(product.router, prefix="/product", tags=["Product"])
 app.include_router(products.router, prefix="/products",

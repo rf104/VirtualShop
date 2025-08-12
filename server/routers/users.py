@@ -64,8 +64,6 @@ class AuthUser(BaseModel):
     deleted_at: Optional[datetime]
     is_anonymous: Optional[bool]
 
-# 🔧 Request model
-
 
 class UserCreate(BaseModel):
     name: Optional[str]
@@ -75,8 +73,6 @@ class UserCreate(BaseModel):
     profile_image: Optional[str] = None
     dob: Optional[datetime] = None
 
-# ✅ Create user
-
 
 @router.post("/", response_model=User)
 async def create_user(user: UserCreate, pool: asyncpg.Pool = Depends(get_db_pool)):
@@ -85,18 +81,14 @@ async def create_user(user: UserCreate, pool: asyncpg.Pool = Depends(get_db_pool
             "INSERT INTO users (name, email, phone, user_type) VALUES ($1, $2, $3, $4) RETURNING *",
             user.name, user.email, user.phone, user.user_type
         )
-        return User(**dict(result))  # ✅ Convert to dict → Pydantic model
-
-# ✅ Get all users
+        return User(**dict(result))
 
 
 @router.get("/", response_model=List[User])
 async def get_users(pool: asyncpg.Pool = Depends(get_db_pool)):
     async with pool.acquire() as conn:
         users = await conn.fetch("SELECT * FROM users")
-        return [User(**dict(user)) for user in users]  # ✅ Convert each record
-
-# ✅ Get single user
+        return [User(**dict(user)) for user in users]
 
 
 @router.get("/{user_id}", response_model=User)
@@ -108,14 +100,12 @@ async def get_user(user_id: int, pool: asyncpg.Pool = Depends(get_db_pool)):
         raise HTTPException(status_code=404, detail="User not found")
 
 
-# ✅ Get user by auth_id
 @router.get("/auth/{auth_id}", response_model=List[AuthUser])
 async def get_user_by_auth_id(auth_id: str, pool: asyncpg.Pool = Depends(get_db_pool)):
     async with pool.acquire() as conn:
         user = await conn.fetchrow("SELECT * FROM auth.users as a,users as b WHERE a.id = $1::uuid and a.id = b.auth_id", auth_id)
         if user:
             data = dict(user)
-            # Coerce JSON string to dict for JSONB fields
             for key in ("raw_app_meta_data", "raw_user_meta_data"):
                 val = data.get(key)
                 if isinstance(val, str):
@@ -125,8 +115,6 @@ async def get_user_by_auth_id(auth_id: str, pool: asyncpg.Pool = Depends(get_db_
                         data[key] = None
             return [AuthUser(**data)]
         raise HTTPException(status_code=404, detail="User not found")
-
-# ✅ Update user
 
 
 @router.put("/{auth_id}", response_model=User)
@@ -149,8 +137,6 @@ async def update_user(auth_id: str, user: UserCreate, pool: asyncpg.Pool = Depen
         if updated:
             return User(**dict(updated))
         raise HTTPException(status_code=404, detail="User not found")
-
-# ✅ Delete user
 
 
 @router.delete("/{user_id}")

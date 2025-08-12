@@ -7,14 +7,17 @@ from db import get_db_pool
 
 router = APIRouter()
 
+
 class Referral(BaseModel):
     referral_id: int
     created_at: datetime
     status: Optional[str]
 
+
 class ReferralCreate(BaseModel):
-    referral_id: int  # must match an existing user_id
+    referral_id: int
     status: Optional[str]
+
 
 @router.post("/", response_model=Referral)
 async def create_referral(referral: ReferralCreate, pool: asyncpg.Pool = Depends(get_db_pool)):
@@ -26,15 +29,18 @@ async def create_referral(referral: ReferralCreate, pool: asyncpg.Pool = Depends
             )
             return dict(result)
         except asyncpg.exceptions.ForeignKeyViolationError:
-            raise HTTPException(status_code=400, detail="Foreign key constraint failed (referral_id must match user_id)")
+            raise HTTPException(
+                status_code=400, detail="Foreign key constraint failed (referral_id must match user_id)")
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/", response_model=List[Referral])
 async def get_referrals(pool: asyncpg.Pool = Depends(get_db_pool)):
     async with pool.acquire() as conn:
         results = await conn.fetch("SELECT * FROM referral")
         return [dict(row) for row in results]
+
 
 @router.get("/{referral_id}", response_model=Referral)
 async def get_referral(referral_id: int, pool: asyncpg.Pool = Depends(get_db_pool)):
@@ -43,6 +49,7 @@ async def get_referral(referral_id: int, pool: asyncpg.Pool = Depends(get_db_poo
         if referral:
             return dict(referral)
         raise HTTPException(status_code=404, detail="Referral not found")
+
 
 @router.put("/{referral_id}", response_model=Referral)
 async def update_referral(referral_id: int, referral: ReferralCreate, pool: asyncpg.Pool = Depends(get_db_pool)):
@@ -54,6 +61,7 @@ async def update_referral(referral_id: int, referral: ReferralCreate, pool: asyn
         if updated:
             return dict(updated)
         raise HTTPException(status_code=404, detail="Referral not found")
+
 
 @router.delete("/{referral_id}")
 async def delete_referral(referral_id: int, pool: asyncpg.Pool = Depends(get_db_pool)):

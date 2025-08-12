@@ -5,8 +5,9 @@ import 'package:virtual_shop/pages/cart_page.dart';
 import 'package:virtual_shop/pages/chat_assistant_page.dart';
 import 'package:virtual_shop/pages/notification_page.dart';
 import 'package:virtual_shop/pages/profile_page.dart';
-import 'package:virtual_shop/pages/seller_dashboard_page.dart';
+import 'package:virtual_shop/pages/seller_shell.dart';
 import 'package:virtual_shop/widgets/glass_container.dart';
+import 'package:virtual_shop/utils/supabase_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -18,17 +19,40 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   int _bottomNavIndex = 0;
   late TabController _tabController;
+  String? _userType; // 'Seller' or 'Normal User'
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadUserType();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUserType() async {
+    try {
+      final email = supabase.auth.currentUser?.email;
+      if (email == null || email.isEmpty) return;
+      final profile = await SupabaseService.fetchUserProfile(email);
+      if (!mounted) return;
+      setState(() {
+        _userType = (profile?['user_type'] as String?)?.trim();
+        // Keep selected tab valid based on role
+        final isSeller = _userType == 'Seller';
+        if (isSeller && _bottomNavIndex == 6) {
+          _bottomNavIndex = 7;
+        } else if (!isSeller && _bottomNavIndex == 7) {
+          _bottomNavIndex = 6;
+        }
+      });
+    } catch (_) {
+      // Silently ignore; default (non-seller) UI will be shown
+    }
   }
 
   Widget _buildNavItem(IconData icon, int index) {
@@ -110,7 +134,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       case 6:
         return const ProfilePage(key: ValueKey('ProfilePage'));
       case 7:
-        return const SellerDashboardPage(key: ValueKey('SellerDashboardPage'));
+        return const SellerShell(key: ValueKey('SellerShell'));
       default:
         return const Center(
           key: ValueKey('ComingSoonDefault'),
@@ -147,8 +171,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     _buildNavItemWithBadge(Icons.shopping_bag_outlined, 3, 4),
                     _buildNavItem(Icons.bubble_chart, 4),
                     _buildNavItem(Icons.notifications, 5),
-                    _buildNavItem(Icons.person_outline, 6),
-                    _buildNavItem(Icons.store, 7),
+                    if ((_userType ?? 'Normal User') != 'Seller')
+                      _buildNavItem(Icons.person_outline, 6)
+                    else
+                      _buildNavItem(Icons.store, 7),
                   ],
                 ),
               ),
