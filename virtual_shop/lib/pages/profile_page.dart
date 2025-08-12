@@ -6,6 +6,7 @@ import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/models/closet.dart';
 import 'edit_profile_final.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -16,33 +17,109 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   List<Color> _gradientColors = [const Color(0xFF8E9EAB), Colors.black];
+  String? _profileImageUrl;
+  ImageProvider? _profileImageProvider;
+  PaletteGenerator? _cachedPalette;
+  String? _lastPaletteKey;
+  String _profileName = 'User';
+
+  Map<String, String>? _headersForUrl(String url) {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) return null;
+    // Add auth header for Supabase Storage private buckets
+    if (url.contains('supabase.co') && url.contains('/storage/v1/object/')) {
+      return {'Authorization': 'Bearer ${session.accessToken}'};
+    }
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
-    _updatePalette();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        final meta = user.userMetadata ?? {};
+        final dynamic candidate =
+            meta['avatar_url_custom'] ?? meta['picture'] ?? meta['avatarUrl'];
+        final dynamic nameCandidate = meta['name'] ?? meta['fullName'];
+        if (candidate is String && candidate.trim().isNotEmpty) {
+          final url = candidate.trim();
+          final provider = CachedNetworkImageProvider(
+            url,
+            maxHeight: 150,
+            cacheKey: url,
+            headers: _headersForUrl(url),
+          );
+          if (mounted) {
+            setState(() {
+              _profileImageUrl = url;
+              _profileImageProvider = provider;
+              _profileName = nameCandidate is String
+                  ? nameCandidate.trim()
+                  : 'User';
+            });
+          }
+          precacheImage(provider, context).catchError((_) {});
+        }
+      }
+    } catch (_) {
+    } finally {
+      if (!mounted) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _updatePalette();
+        }
+      });
+    }
   }
 
   Future<void> _updatePalette() async {
-    final paletteGenerator = await PaletteGenerator.fromImageProvider(
-      const AssetImage('assets/images/profile6.jpg'),
-    );
-    if (paletteGenerator.colors.length >= 2) {
-      if (mounted) {
-        setState(() {
-          _gradientColors = [
-            paletteGenerator.colors.elementAt(0),
-            paletteGenerator.colors.elementAt(1),
-          ];
-        });
+    final currentKey = _profileImageUrl ?? 'asset:assets/images/profile2.jpg';
+    if (_cachedPalette != null && _lastPaletteKey == currentKey) return;
+
+    final ImageProvider provider =
+        _profileImageProvider ??
+        (_profileImageUrl != null
+            ? CachedNetworkImageProvider(
+                _profileImageUrl!,
+                maxWidth: 150,
+                maxHeight: 150,
+                cacheKey: _profileImageUrl!,
+                headers: _headersForUrl(_profileImageUrl!),
+              )
+            : const AssetImage('assets/images/profile2.jpg'));
+    try {
+      final paletteGenerator = await PaletteGenerator.fromImageProvider(
+        provider,
+        size: const Size(200, 200),
+        maximumColorCount: 8,
+      );
+      if (paletteGenerator.colors.length >= 2) {
+        if (mounted) {
+          setState(() {
+            _gradientColors = [
+              paletteGenerator.colors.elementAt(0),
+              paletteGenerator.colors.elementAt(1),
+            ];
+            _cachedPalette = paletteGenerator;
+            _lastPaletteKey = currentKey;
+          });
+        }
+      } else if (paletteGenerator.colors.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _gradientColors = [paletteGenerator.colors.first, Colors.black];
+            _cachedPalette = paletteGenerator;
+            _lastPaletteKey = currentKey;
+          });
+        }
       }
-    } else if (paletteGenerator.colors.isNotEmpty) {
-      if (mounted) {
-        setState(() {
-          _gradientColors = [paletteGenerator.colors.first, Colors.black];
-        });
-      }
-    }
+    } catch (_) {}
   }
 
   @override
@@ -61,10 +138,12 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ),
           ),
-          // Frosted glass effect
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 50.0, sigmaY: 50.0),
-            child: Container(color: Colors.black.withOpacity(0.1)),
+          // Frosted glass effect (clip for performance)
+          ClipRect(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 50.0, sigmaY: 50.0),
+              child: Container(color: Colors.black.withOpacity(0.1)),
+            ),
           ),
           SingleChildScrollView(
             child: Column(
@@ -462,21 +541,52 @@ class _ProfilePageState extends State<ProfilePage> {
             ).createShader(Rect.fromLTRB(0, 0, rect.width, rect.height));
           },
           blendMode: BlendMode.dstIn,
-          child: Image.asset(
-            'assets/images/profile2.jpg',
-            height: MediaQuery.of(context).size.height * 0.8,
-            width: double.infinity,
-            fit: BoxFit.cover,
-          ),
+          child: _profileImageUrl != null
+              ? CachedNetworkImage(
+                  imageUrl: _profileImageUrl!,
+                  httpHeaders: _headersForUrl(_profileImageUrl!) ?? const {},
+                  imageBuilder: (context, imageProvider) => Image(
+                    image: imageProvider,
+                    height: MediaQuery.of(context).size.height * 0.8,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.low,
+                  ),
+                  placeholder: (context, url) => Image.asset(
+                    'assets/images/profile2.jpg',
+                    height: MediaQuery.of(context).size.height * 0.8,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.low,
+                  ),
+                  errorWidget: (context, url, error) => Image.asset(
+                    'assets/images/profile2.jpg',
+                    height: MediaQuery.of(context).size.height * 0.8,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.low,
+                  ),
+                  fadeInDuration: const Duration(milliseconds: 150),
+                  memCacheWidth: 800,
+                  memCacheHeight: 800,
+                  maxWidthDiskCache: 1024,
+                  maxHeightDiskCache: 1024,
+                )
+              : Image.asset(
+                  'assets/images/profile2.jpg',
+                  height: MediaQuery.of(context).size.height * 0.8,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
         ),
         const SizedBox(height: 10),
         const Text('24.978 Followers', style: TextStyle(color: Colors.white70)),
         const SizedBox(height: 5),
-        const Text(
-          'Alice Eve',
+        Text(
+          _profileName,
           style: TextStyle(
             color: Colors.white,
-            fontSize: 42,
+            fontSize: 21,
             fontWeight: FontWeight.bold,
           ),
         ),

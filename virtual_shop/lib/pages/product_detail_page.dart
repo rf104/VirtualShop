@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:oc_liquid_glass/oc_liquid_glass.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:virtual_shop/models/product.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:virtual_shop/pages/chat_page.dart';
 import 'package:virtual_shop/pages/edit_product.dart';
 import 'package:virtual_shop/pages/virtual_try_on_page.dart';
@@ -224,9 +225,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
   Future<void> _updatePaletteGenerator() async {
-    final paletteGenerator = await PaletteGenerator.fromImageProvider(
-      AssetImage(widget.product.image),
-    );
+    final String img = widget.product.image;
+    final ImageProvider provider =
+        (img.startsWith('http://') || img.startsWith('https://'))
+        ? CachedNetworkImageProvider(img)
+        : AssetImage(img);
+    final paletteGenerator = await PaletteGenerator.fromImageProvider(provider);
     if (paletteGenerator.dominantColor != null) {
       if (mounted) {
         setState(() {
@@ -269,11 +273,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           ),
           Hero(
             tag: widget.product.image,
-            child: Image.asset(
-              widget.product.image,
-              fit: BoxFit.cover,
+            child: _AdaptiveImage(
+              image: widget.product.image,
               height: MediaQuery.of(context).size.height * 0.6,
               width: double.infinity,
+              fit: BoxFit.cover,
             ),
           ),
           _buildTopBar(context),
@@ -771,6 +775,55 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               ),
         SizedBox(height: rf(context, 24)),
       ],
+    );
+  }
+}
+
+class _AdaptiveImage extends StatelessWidget {
+  final String image;
+  final double? height;
+  final double? width;
+  final BoxFit? fit;
+  const _AdaptiveImage({
+    required this.image,
+    this.height,
+    this.width,
+    this.fit,
+  });
+
+  bool get _isNetwork =>
+      image.startsWith('http://') || image.startsWith('https://');
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isNetwork) {
+      return CachedNetworkImage(
+        imageUrl: image,
+        height: height,
+        width: width,
+        fit: fit,
+        placeholder: (context, url) => SizedBox(
+          height: height,
+          width: width,
+          child: const Center(child: CircularProgressIndicator()),
+        ),
+        errorWidget: (context, url, error) => SizedBox(
+          height: height,
+          width: width,
+          child: const Center(child: Icon(Icons.broken_image, size: 48)),
+        ),
+      );
+    }
+    return Image.asset(
+      image,
+      height: height,
+      width: width,
+      fit: fit,
+      errorBuilder: (context, error, stack) => SizedBox(
+        height: height,
+        width: width,
+        child: const Center(child: Icon(Icons.broken_image, size: 48)),
+      ),
     );
   }
 }

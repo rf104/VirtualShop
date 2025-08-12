@@ -1,4 +1,6 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:virtual_shop/pages/home_page.dart';
 import 'package:virtual_shop/utils/loading_overlay.dart';
 import 'package:virtual_shop/utils/supabase_service.dart';
@@ -18,9 +20,13 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
   final _phoneCtrl = TextEditingController();
   String _gender = '';
   String _userType = 'Normal User';
+  String? _profile_image;
   DateTime? _selectedDate;
   bool _loading = false;
   String _error = '';
+  String? _profileImageUrl;
+  Uint8List? _pickedImageBytes;
+  String? _pickedImageName;
 
   @override
   void initState() {
@@ -36,6 +42,7 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
         _phoneCtrl.text = (row['phone'] ?? '') as String;
         _gender = (row['gender'] ?? '') as String;
         _userType = (row['user_type'] ?? 'Normal User') as String;
+        _profile_image = (row['profile_image'] ?? '') as String;
         final dobAny = row['dob'];
         if (dobAny != null) {
           final dobStr = dobAny.toString();
@@ -69,6 +76,19 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
       _error = '';
     });
     try {
+      // If a new image was picked, upload it first
+      if (_pickedImageBytes != null && _pickedImageName != null) {
+        final url = await SupabaseService.uploadProfileImageBytes(
+          bytes: _pickedImageBytes!,
+          filename: _pickedImageName!,
+        );
+        _profileImageUrl = url;
+        await SupabaseService.setProfileImageUrlForUser(
+          url,
+          email: widget.email,
+        );
+      }
+
       await SupabaseService.updateUserProfile(
         email: widget.email,
         name: _nameCtrl.text.trim(),
@@ -76,12 +96,16 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
         gender: _gender,
         dobIso8601: _selectedDate?.toIso8601String() ?? _dobCtrl.text,
         phone: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+        profileImageUrl: _profileImageUrl,
       );
       await SupabaseService.updateAuthMetadata({
         'name': _nameCtrl.text.trim(),
         'gender': _gender,
         'dob': _selectedDate?.toIso8601String() ?? _dobCtrl.text,
         'user_type': _userType,
+        if (_profileImageUrl != null) 'avatar_url_custom': _profileImageUrl,
+        if (_profileImageUrl != null) 'avatar_url': _profileImageUrl,
+        if (_profileImageUrl != null) 'picture': _profileImageUrl,
         if (_phoneCtrl.text.trim().isNotEmpty) 'phone': _phoneCtrl.text.trim(),
       });
       if (!mounted) return;
@@ -109,6 +133,30 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Center(
+                  child: Stack(
+                    alignment: Alignment.bottomRight,
+                    children: [
+                      CircleAvatar(
+                        radius: 40,
+                        backgroundImage: _pickedImageBytes != null
+                            ? MemoryImage(_pickedImageBytes!)
+                            : (_profileImageUrl != null
+                                  ? NetworkImage(_profileImageUrl!)
+                                        as ImageProvider
+                                  : const AssetImage(
+                                      'assets/images/profile6.jpg',
+                                    )),
+                      ),
+                      IconButton(
+                        onPressed: _pickImage,
+                        icon: const Icon(Icons.camera_alt),
+                        tooltip: 'Upload profile image',
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
                 Text(
                   'Email: ${widget.email}',
                   style: const TextStyle(fontWeight: FontWeight.w600),
@@ -193,5 +241,21 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
         ),
       ),
     );
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final picker = ImagePicker();
+      final XFile? file = await picker.pickImage(source: ImageSource.gallery);
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      setState(() {
+        _pickedImageBytes = bytes;
+        _pickedImageName = file.name;
+        _profileImageUrl = null; // will be replaced after upload
+      });
+    } catch (e) {
+      setState(() => _error = 'Image pick failed: $e');
+    }
   }
 }

@@ -64,6 +64,7 @@ dependencies:
   image_background_remover: ^1.0.0
   http: ^1.4.0
   supabase_flutter: ^2.0.0
+  cached_network_image: ^3.4.1
 
 dev_dependencies:
   flutter_test:
