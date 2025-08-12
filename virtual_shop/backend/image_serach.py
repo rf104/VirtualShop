@@ -5,11 +5,15 @@ from matplotlib import pyplot as plt
 from matplotlib import image as mpimg
 import os
 from typing import List, Tuple, Optional
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
 
-# Local development connection string
-# For production, use your Supabase project URL instead
-DB_CONNECTION = "postgresql://postgres.wnaqfhqvghulydvnpcsw:01769041694@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
+# Get database connection from environment variable
+DB_CONNECTION = os.getenv('SUPABASE_DB_URL')
+if not DB_CONNECTION:
+    raise ValueError("SUPABASE_DB_URL environment variable is not set. Please check your .env file.")
 
 def seed():
     # create vector store client
