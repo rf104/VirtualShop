@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'dart:typed_data';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -13,14 +14,12 @@ import 'package:pro_image_editor/designs/frosted_glass/frosted_glass.dart';
 // Custom widget for virtual try-on image picking
 class VirtualTryOnImagePicker extends StatefulWidget {
   final Function(Uint8List imageBytes) onImagePicked;
-  
-  const VirtualTryOnImagePicker({
-    super.key,
-    required this.onImagePicked,
-  });
+
+  const VirtualTryOnImagePicker({super.key, required this.onImagePicked});
 
   @override
-  State<VirtualTryOnImagePicker> createState() => _VirtualTryOnImagePickerState();
+  State<VirtualTryOnImagePicker> createState() =>
+      _VirtualTryOnImagePickerState();
 }
 
 class _VirtualTryOnImagePickerState extends State<VirtualTryOnImagePicker> {
@@ -47,7 +46,9 @@ class _VirtualTryOnImagePickerState extends State<VirtualTryOnImagePicker> {
           configs: ProImageEditorConfigs(
             designMode: platformDesignMode,
             theme: Theme.of(context).copyWith(
-              iconTheme: Theme.of(context).iconTheme.copyWith(color: Colors.white),
+              iconTheme: Theme.of(
+                context,
+              ).iconTheme.copyWith(color: Colors.white),
             ),
             mainEditor: MainEditorConfigs(
               widgets: MainEditorWidgets(
@@ -204,16 +205,14 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
       dotenv.env['SEGMIND_API_KEY_2'],
       dotenv.env['SEGMIND_API_KEY_3'],
     ];
-    final String userBase64 = base64Encode(userImageBytes);
-    final String productBase64 = base64Encode(productImageBytes);
     // Segmind expects base64 with data URI prefix
     // final String userDataUri = 'data:image/jpeg;base64,$userBase64';
     final String userDataUri =
-        'https://fiahucneelhdkcazyzwn.supabase.co/storage/v1/object/public/arik//person.jpg';
+        'https://wnaqfhqvghulydvnpcsw.supabase.co/storage/v1/object/public/productimages/person.jpg';
 
     // final String productDataUri = 'data:image/jpeg;base64,$productBase64';
     final String productDataUri =
-        'https://fiahucneelhdkcazyzwn.supabase.co/storage/v1/object/public/arik//cloth.jpg';
+        'https://wnaqfhqvghulydvnpcsw.supabase.co/storage/v1/object/public/productimages/s-l1200.jpg';
 
     final Map<String, dynamic> payload = {
       'crop': false,
@@ -321,31 +320,65 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
             Expanded(
               flex: 5,
               child: Center(
-                child: _isGenerating
-                    ? const CircularProgressIndicator()
-                    : _error != null
-                    ? Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error, color: Colors.red, size: 48),
-                          const SizedBox(height: 12),
-                          Text(
-                            _error!,
-                            style: const TextStyle(color: Colors.red),
-                          ),
-                          const SizedBox(height: 12),
-                          ElevatedButton(
-                            onPressed: () {
-                              if (_userImage != null)
-                                _generateVirtualTryOn(_userImage!);
-                            },
-                            child: const Text('Retry'),
-                          ),
-                        ],
-                      )
-                    : _virtualTryOnImage != null
-                    ? Image.memory(_virtualTryOnImage!, fit: BoxFit.contain)
-                    : const SizedBox.shrink(),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 600),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    final curved = CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeInOut,
+                    );
+                    return FadeTransition(
+                      opacity: curved,
+                      child: ScaleTransition(
+                        scale: Tween<double>(
+                          begin: 0.98,
+                          end: 1.0,
+                        ).animate(curved),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: _isGenerating
+                      ? GlowingBorderImage(
+                          key: ValueKey('loading_${_userImage?.hashCode ?? 0}'),
+                          imageBytes: _userImage!,
+                        )
+                      : _error != null
+                      ? Column(
+                          key: const ValueKey('error'),
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.error,
+                              color: Colors.red,
+                              size: 48,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              _error!,
+                              style: const TextStyle(color: Colors.red),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 12),
+                            ElevatedButton(
+                              onPressed: () {
+                                if (_userImage != null)
+                                  _generateVirtualTryOn(_userImage!);
+                              },
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        )
+                      : _virtualTryOnImage != null
+                      ? Image.memory(
+                          _virtualTryOnImage!,
+                          key: ValueKey('done_${_virtualTryOnImage!.hashCode}'),
+                          fit: BoxFit.contain,
+                        )
+                      : const SizedBox.shrink(),
+                ),
               ),
             )
           else
@@ -653,5 +686,106 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
         _isGenerating = false;
       });
     }
+  }
+}
+
+/// Displays a square image with an animated glowing gradient border while loading.
+class GlowingBorderImage extends StatefulWidget {
+  final Uint8List imageBytes;
+  final double borderWidth;
+  final double borderRadius;
+  final double maxSize;
+
+  const GlowingBorderImage({
+    super.key,
+    required this.imageBytes,
+    this.borderWidth = 6,
+    this.borderRadius = 20,
+    this.maxSize = 420,
+  });
+
+  @override
+  State<GlowingBorderImage> createState() => _GlowingBorderImageState();
+}
+
+class _GlowingBorderImageState extends State<GlowingBorderImage>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: widget.maxSize,
+          maxHeight: widget.maxSize,
+        ),
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              final angle = _controller.value * 2 * math.pi;
+              final glowT =
+                  (math.sin(_controller.value * 2 * math.pi) + 1) / 2; // 0..1
+              final borderRadius = BorderRadius.circular(widget.borderRadius);
+              final colors = [
+                Colors.pinkAccent,
+                Colors.amber,
+                Colors.cyanAccent,
+                Colors.purpleAccent,
+                Colors.pinkAccent,
+              ];
+              return Container(
+                decoration: BoxDecoration(
+                  // Outer subtle glow
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.purpleAccent.withOpacity(
+                        0.35 + 0.25 * glowT,
+                      ),
+                      blurRadius: 24 + 24 * glowT,
+                      spreadRadius: 1 + 2 * glowT,
+                    ),
+                  ],
+                  borderRadius: borderRadius,
+                  gradient: SweepGradient(
+                    colors: colors,
+                    transform: GradientRotation(angle),
+                  ),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.all(widget.borderWidth),
+                  child: ClipRRect(
+                    borderRadius: borderRadius.subtract(
+                      BorderRadius.all(Radius.circular(widget.borderWidth)),
+                    ),
+                    child: Container(
+                      color: Colors.black,
+                      child: Image.memory(widget.imageBytes, fit: BoxFit.cover),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
   }
 }
