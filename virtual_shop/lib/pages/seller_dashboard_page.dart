@@ -1166,7 +1166,12 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     try {
       await Supabase.instance.client.auth.signOut();
       if (!mounted) return;
-      Navigator.of(context).popUntil((route) => route.isFirst);
+      // Ensure we pop on the root navigator to exit the nested SellerShell
+      // so AuthGate at the app root can rebuild to the signed-out UI.
+      Navigator.of(
+        context,
+        rootNavigator: true,
+      ).popUntil((route) => route.isFirst);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
