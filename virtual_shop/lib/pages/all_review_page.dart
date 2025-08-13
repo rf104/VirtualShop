@@ -36,10 +36,7 @@ class AllReviewPage extends StatelessWidget {
         actions: [
           Container(
             margin: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 6,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: const Color(0xffFFD700),
               borderRadius: BorderRadius.circular(12),
@@ -102,56 +99,56 @@ class AllReviewPage extends StatelessWidget {
               // Header
               Padding(
                 padding: const EdgeInsets.all(20),
-                child:                   Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.grey[800],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(
-                            Icons.arrow_back_ios,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: const Text(
-                          "Review Details",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 6,
-                        ),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: _getRatingColor(review['rating'] ?? 0),
-                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.grey[800],
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text(
-                          "${review['rating'] ?? 0}/5",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: const Icon(
+                          Icons.arrow_back_ios,
+                          color: Colors.white,
+                          size: 16,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: const Text(
+                        "Review Details",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _getRatingColor(review['rating'] ?? 0),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        "${review['rating'] ?? 0}/5",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               // Review Details Content
               Expanded(
@@ -196,12 +193,19 @@ class AllReviewPage extends StatelessWidget {
                               ),
                               child: CircleAvatar(
                                 radius: 30,
-                                backgroundImage: NetworkImage(review['avatar'] ?? ''),
-                                onBackgroundImageError: (exception, stackTrace) {
-                                  // Handle image loading error
-                                },
-                                child: review['avatar'] == null 
-                                    ? const Icon(Icons.person, color: Colors.white, size: 30)
+                                backgroundImage: NetworkImage(
+                                  review['avatar'] ?? '',
+                                ),
+                                onBackgroundImageError:
+                                    (exception, stackTrace) {
+                                      // Handle image loading error
+                                    },
+                                child: review['avatar'] == null
+                                    ? const Icon(
+                                        Icons.person,
+                                        color: Colors.white,
+                                        size: 30,
+                                      )
                                     : null,
                               ),
                             ),
@@ -643,9 +647,11 @@ class AllReviewPage extends StatelessWidget {
                               ),
                             ),
                           ),
+                          const SizedBox(height: 40),
                         ],
                       ),
-                      const SizedBox(height: 20),
+                      // Add bottom spacing at the end of the sheet content
+                      const SizedBox(height: 180),
                     ],
                   ),
                 ),
@@ -904,7 +910,7 @@ class AllReviewPage extends StatelessWidget {
             onBackgroundImageError: (exception, stackTrace) {
               // Handle image loading error
             },
-            child: review['avatar'] == null 
+            child: review['avatar'] == null
                 ? const Icon(Icons.person, color: Colors.white, size: 20)
                 : null,
           ),
@@ -1108,5 +1114,3 @@ class AllReviewPage extends StatelessWidget {
     return reviewers[index % reviewers.length];
   }
 }
-
-

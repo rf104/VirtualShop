@@ -361,6 +361,7 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
           ),
           const SizedBox(height: 16),
           ..._getTopProducts().map((product) => _buildTopProductItem(product)),
+          const SizedBox(height: 60),
         ],
       ),
     );
@@ -915,6 +916,7 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
               fontSize: isTablet ? 16 : 14,
             ),
           ),
+          const SizedBox(height: 70),
         ],
       ),
     );
