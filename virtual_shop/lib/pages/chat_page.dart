@@ -56,6 +56,35 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  // Reusable input row
+  Widget _buildInputRow() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _textController,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Ask me anything...',
+              hintStyle: TextStyle(color: Colors.grey[400]),
+              filled: true,
+              fillColor: Colors.grey[900],
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            onSubmitted: (value) => _sendMessage(),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.send, color: Colors.white),
+          onPressed: _sendMessage,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -68,18 +97,36 @@ class _ChatPageState extends State<ChatPage> {
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: _chatHistory.isEmpty
-                ? Center(
-                    child: Lottie.asset(
-                      'assets/images/animation.json',
-                      width: 200,
-                      height: 200,
-                    ),
-                  )
-                : ListView.builder(
+      body: _chatHistory.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 600),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Lottie.asset(
+                        'assets/images/animation.json',
+                        width: 200,
+                        height: 200,
+                      ),
+                      if (_isLoading)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 8.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      const SizedBox(height: 16),
+                      _buildInputRow(),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          : Column(
+              children: [
+                Expanded(
+                  child: ListView.builder(
                     padding: const EdgeInsets.all(8.0),
                     itemCount: _chatHistory.length,
                     itemBuilder: (context, index) {
@@ -107,42 +154,21 @@ class _ChatPageState extends State<ChatPage> {
                       );
                     },
                   ),
-          ),
-          if (_isLoading)
-            const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: CircularProgressIndicator(),
-            ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _textController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Ask me anything...',
-                      hintStyle: TextStyle(color: Colors.grey[400]),
-                      filled: true,
-                      fillColor: Colors.grey[900],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                    onSubmitted: (value) => _sendMessage(),
-                  ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.send, color: Colors.white),
-                  onPressed: _sendMessage,
+                if (_isLoading)
+                  const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 600),
+                    child: _buildInputRow(),
+                  ),
                 ),
               ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }
