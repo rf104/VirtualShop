@@ -19,7 +19,7 @@ class _AddProductPageState extends State<AddProductPage> {
   final _brandController = TextEditingController();
   final _weightController = TextEditingController();
   final _dimensionsController = TextEditingController();
-  
+
   String _selectedCategory = 'Electronics';
   String _selectedCondition = 'New';
   bool _isFeatured = false;
@@ -38,7 +38,7 @@ class _AddProductPageState extends State<AddProductPage> {
     'Beauty',
     'Automotive',
     'Health',
-    'Food & Beverages'
+    'Food & Beverages',
   ];
 
   final List<String> _conditions = ['New', 'Like New', 'Good', 'Fair', 'Poor'];
@@ -79,7 +79,10 @@ class _AddProductPageState extends State<AddProductPage> {
             child: GestureDetector(
               onTap: _saveProduct,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [Color(0xff667eea), Color(0xff764ba2)],
@@ -92,7 +95,9 @@ class _AddProductPageState extends State<AddProductPage> {
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : const Text(
@@ -111,8 +116,8 @@ class _AddProductPageState extends State<AddProductPage> {
         key: _formKey,
         child: SingleChildScrollView(
           padding: EdgeInsets.symmetric(
-            horizontal: MediaQuery.of(context).size.width > 768 
-                ? MediaQuery.of(context).size.width * 0.2 
+            horizontal: MediaQuery.of(context).size.width > 768
+                ? MediaQuery.of(context).size.width * 0.2
                 : 20,
             vertical: 20,
           ),
@@ -121,46 +126,69 @@ class _AddProductPageState extends State<AddProductPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-              // Product Images Section
-              _buildImageSection(),
-              const SizedBox(height: 24),
-              
-              // Basic Information
-              _buildSectionTitle('Basic Information'),
-              const SizedBox(height: 16),
-              _buildTextField(
-                controller: _nameController,
-                label: 'Product Name',
-                hint: 'Enter product name',
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter product name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              _buildTextField(
-                controller: _descriptionController,
-                label: 'Description',
-                hint: 'Enter product description',
-                maxLines: 4,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter product description';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  bool isWideScreen = constraints.maxWidth > 600;
-                  return isWideScreen 
-                      ? Row(
-                          children: [
-                            Expanded(
-                              child: _buildDropdown(
+                // Product Images Section
+                _buildImageSection(),
+                const SizedBox(height: 24),
+
+                // Basic Information
+                _buildSectionTitle('Basic Information'),
+                const SizedBox(height: 16),
+                _buildTextField(
+                  controller: _nameController,
+                  label: 'Product Name',
+                  hint: 'Enter product name',
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter product name';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                _buildTextField(
+                  controller: _descriptionController,
+                  label: 'Description',
+                  hint: 'Enter product description',
+                  maxLines: 4,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter product description';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    bool isWideScreen = constraints.maxWidth > 600;
+                    return isWideScreen
+                        ? Row(
+                            children: [
+                              Expanded(
+                                child: _buildDropdown(
+                                  label: 'Category',
+                                  value: _selectedCategory,
+                                  items: _categories,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _selectedCategory = value!;
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: _brandController,
+                                  label: 'Brand',
+                                  hint: 'Enter brand name',
+                                ),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            children: [
+                              _buildDropdown(
                                 label: 'Category',
                                 value: _selectedCategory,
                                 items: _categories,
@@ -170,52 +198,67 @@ class _AddProductPageState extends State<AddProductPage> {
                                   });
                                 },
                               ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildTextField(
+                              const SizedBox(height: 16),
+                              _buildTextField(
                                 controller: _brandController,
                                 label: 'Brand',
                                 hint: 'Enter brand name',
                               ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          children: [
-                            _buildDropdown(
-                              label: 'Category',
-                              value: _selectedCategory,
-                              items: _categories,
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedCategory = value!;
-                                });
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            _buildTextField(
-                              controller: _brandController,
-                              label: 'Brand',
-                              hint: 'Enter brand name',
-                            ),
-                          ],
-                        );
-                },
-              ),
-              const SizedBox(height: 24),
-              
-              // Pricing & Stock
-              _buildSectionTitle('Pricing & Stock'),
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  bool isWideScreen = constraints.maxWidth > 600;
-                  return isWideScreen 
-                      ? Row(
-                          children: [
-                            Expanded(
-                              child: _buildTextField(
+                            ],
+                          );
+                  },
+                ),
+                const SizedBox(height: 24),
+
+                // Pricing & Stock
+                _buildSectionTitle('Pricing & Stock'),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    bool isWideScreen = constraints.maxWidth > 600;
+                    return isWideScreen
+                        ? Row(
+                            children: [
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: _priceController,
+                                  label: 'Price (৳)',
+                                  hint: '0.00',
+                                  keyboardType: TextInputType.number,
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter price';
+                                    }
+                                    if (double.tryParse(value) == null) {
+                                      return 'Please enter valid price';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: _stockController,
+                                  label: 'Stock Quantity',
+                                  hint: '0',
+                                  keyboardType: TextInputType.number,
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter stock';
+                                    }
+                                    if (int.tryParse(value) == null) {
+                                      return 'Please enter valid quantity';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            children: [
+                              _buildTextField(
                                 controller: _priceController,
                                 label: 'Price (৳)',
                                 hint: '0.00',
@@ -230,10 +273,8 @@ class _AddProductPageState extends State<AddProductPage> {
                                   return null;
                                 },
                               ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildTextField(
+                              const SizedBox(height: 16),
+                              _buildTextField(
                                 controller: _stockController,
                                 label: 'Stock Quantity',
                                 hint: '0',
@@ -248,175 +289,147 @@ class _AddProductPageState extends State<AddProductPage> {
                                   return null;
                                 },
                               ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          children: [
-                            _buildTextField(
-                              controller: _priceController,
-                              label: 'Price (৳)',
-                              hint: '0.00',
-                              keyboardType: TextInputType.number,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter price';
-                                }
-                                if (double.tryParse(value) == null) {
-                                  return 'Please enter valid price';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                            _buildTextField(
-                              controller: _stockController,
-                              label: 'Stock Quantity',
-                              hint: '0',
-                              keyboardType: TextInputType.number,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter stock';
-                                }
-                                if (int.tryParse(value) == null) {
-                                  return 'Please enter valid quantity';
-                                }
-                                return null;
-                              },
-                            ),
-                          ],
-                        );
-                },
-              ),
-              const SizedBox(height: 16),
-              _buildDropdown(
-                label: 'Condition',
-                value: _selectedCondition,
-                items: _conditions,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCondition = value!;
-                  });
-                },
-              ),
-              const SizedBox(height: 24),
-              
-              // Product Details
-              _buildSectionTitle('Product Details'),
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  bool isWideScreen = constraints.maxWidth > 600;
-                  return isWideScreen 
-                      ? Row(
-                          children: [
-                            Expanded(
-                              child: _buildTextField(
+                            ],
+                          );
+                  },
+                ),
+                const SizedBox(height: 16),
+                _buildDropdown(
+                  label: 'Condition',
+                  value: _selectedCondition,
+                  items: _conditions,
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedCondition = value!;
+                    });
+                  },
+                ),
+                const SizedBox(height: 24),
+
+                // Product Details
+                _buildSectionTitle('Product Details'),
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    bool isWideScreen = constraints.maxWidth > 600;
+                    return isWideScreen
+                        ? Row(
+                            children: [
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: _weightController,
+                                  label: 'Weight (kg)',
+                                  hint: '0.0',
+                                  keyboardType: TextInputType.number,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: _dimensionsController,
+                                  label: 'Dimensions (L x W x H cm)',
+                                  hint: 'e.g., 20 x 15 x 10',
+                                ),
+                              ),
+                            ],
+                          )
+                        : Column(
+                            children: [
+                              _buildTextField(
                                 controller: _weightController,
                                 label: 'Weight (kg)',
                                 hint: '0.0',
                                 keyboardType: TextInputType.number,
                               ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildTextField(
+                              const SizedBox(height: 16),
+                              _buildTextField(
                                 controller: _dimensionsController,
                                 label: 'Dimensions (L x W x H cm)',
                                 hint: 'e.g., 20 x 15 x 10',
                               ),
-                            ),
-                          ],
-                        )
-                      : Column(
-                          children: [
-                            _buildTextField(
-                              controller: _weightController,
-                              label: 'Weight (kg)',
-                              hint: '0.0',
-                              keyboardType: TextInputType.number,
-                            ),
-                            const SizedBox(height: 16),
-                            _buildTextField(
-                              controller: _dimensionsController,
-                              label: 'Dimensions (L x W x H cm)',
-                              hint: 'e.g., 20 x 15 x 10',
-                            ),
-                          ],
-                        );
-                },
-              ),
-              const SizedBox(height: 24),
-              
-              // Settings
-              _buildSectionTitle('Settings'),
-              const SizedBox(height: 16),
-              _buildSwitchTile(
-                title: 'Featured Product',
-                subtitle: 'Highlight this product in featured section',
-                value: _isFeatured,
-                onChanged: (value) {
-                  setState(() {
-                    _isFeatured = value;
-                  });
-                },
-              ),
-              _buildSwitchTile(
-                title: 'In Stock',
-                subtitle: 'Product is available for purchase',
-                value: _isInStock,
-                onChanged: (value) {
-                  setState(() {
-                    _isInStock = value;
-                  });
-                },
-              ),
-              const SizedBox(height: 32),
-              
-              // Save Button
-              Container(
-                width: double.infinity,
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width > 600 ? 400 : double.infinity,
+                            ],
+                          );
+                  },
                 ),
-                child: GestureDetector(
-                  onTap: _saveProduct,
-                  child: Container(
-                    padding: EdgeInsets.all(
-                      MediaQuery.of(context).size.width > 600 ? 18 : 16,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xff667eea), Color(0xff764ba2)],
+                const SizedBox(height: 24),
+
+                // Settings
+                _buildSectionTitle('Settings'),
+                const SizedBox(height: 16),
+                _buildSwitchTile(
+                  title: 'Featured Product',
+                  subtitle: 'Highlight this product in featured section',
+                  value: _isFeatured,
+                  onChanged: (value) {
+                    setState(() {
+                      _isFeatured = value;
+                    });
+                  },
+                ),
+                _buildSwitchTile(
+                  title: 'In Stock',
+                  subtitle: 'Product is available for purchase',
+                  value: _isInStock,
+                  onChanged: (value) {
+                    setState(() {
+                      _isInStock = value;
+                    });
+                  },
+                ),
+                const SizedBox(height: 32),
+
+                // Save Button
+                Container(
+                  width: double.infinity,
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width > 600
+                        ? 400
+                        : double.infinity,
+                  ),
+                  child: GestureDetector(
+                    onTap: _saveProduct,
+                    child: Container(
+                      padding: EdgeInsets.all(
+                        MediaQuery.of(context).size.width > 600 ? 18 : 16,
                       ),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xff667eea).withOpacity(0.3),
-                          blurRadius: 15,
-                          offset: const Offset(0, 8),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xff667eea), Color(0xff764ba2)],
                         ),
-                      ],
-                    ),
-                    child: _isLoading
-                        ? const Center(
-                            child: CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : Text(
-                            'Add Product',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: MediaQuery.of(context).size.width > 600 ? 18 : 16,
-                              fontWeight: FontWeight.bold,
-                            ),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xff667eea).withOpacity(0.3),
+                            blurRadius: 15,
+                            offset: const Offset(0, 8),
                           ),
+                        ],
+                      ),
+                      child: _isLoading
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              'Add Product',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize:
+                                    MediaQuery.of(context).size.width > 600
+                                    ? 18
+                                    : 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                    ),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 72),
+              ],
             ),
           ),
         ),
@@ -482,7 +495,9 @@ class _AddProductPageState extends State<AddProductPage> {
                         'Upload Product Images',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: MediaQuery.of(context).size.width > 600 ? 18 : 16,
+                          fontSize: MediaQuery.of(context).size.width > 600
+                              ? 18
+                              : 16,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -491,7 +506,9 @@ class _AddProductPageState extends State<AddProductPage> {
                         'Add up to 5 images',
                         style: TextStyle(
                           color: Colors.grey,
-                          fontSize: MediaQuery.of(context).size.width > 600 ? 16 : 14,
+                          fontSize: MediaQuery.of(context).size.width > 600
+                              ? 16
+                              : 14,
                         ),
                       ),
                     ],
@@ -510,7 +527,7 @@ class _AddProductPageState extends State<AddProductPage> {
                     } else if (constraints.maxWidth > 400) {
                       crossAxisCount = 4;
                     }
-                    
+
                     return GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -558,8 +575,7 @@ class _AddProductPageState extends State<AddProductPage> {
                     );
                   },
                 ),
-                if (_selectedImages.length < 5)
-                  const SizedBox(height: 16),
+                if (_selectedImages.length < 5) const SizedBox(height: 16),
                 if (_selectedImages.length < 5)
                   GestureDetector(
                     onTap: _pickImages,
@@ -690,10 +706,7 @@ class _AddProductPageState extends State<AddProductPage> {
             dropdownColor: Colors.grey[800],
             style: const TextStyle(color: Colors.white),
             items: items.map((String item) {
-              return DropdownMenuItem<String>(
-                value: item,
-                child: Text(item),
-              );
+              return DropdownMenuItem<String>(value: item, child: Text(item));
             }).toList(),
           ),
         ),
@@ -798,19 +811,13 @@ class _AddProductPageState extends State<AddProductPage> {
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
   void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.green),
     );
   }
 

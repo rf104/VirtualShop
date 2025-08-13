@@ -338,6 +338,7 @@ class _MyProductsSheetState extends State<MyProductsSheet> {
                         ],
                       ),
               ),
+              const SizedBox(height: 60),
             ],
           ),
         );

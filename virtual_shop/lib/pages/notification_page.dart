@@ -174,6 +174,7 @@ class NotificationItem extends StatelessWidget {
                   time,
                   style: const TextStyle(color: Colors.white54, fontSize: 12),
                 ),
+                const SizedBox(height: 20),
               ],
             ),
           ),
