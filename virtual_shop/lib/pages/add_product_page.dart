@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import '../services/product_service.dart';
 
 class AddProductPage extends StatefulWidget {
   const AddProductPage({super.key});
@@ -797,15 +798,53 @@ class _AddProductPageState extends State<AddProductPage> {
         _isLoading = true;
       });
 
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
+      try {
+        // Parse weight as double if provided
+        double? weight;
+        if (_weightController.text.isNotEmpty) {
+          weight = double.tryParse(_weightController.text);
+          if (weight == null) {
+            _showErrorSnackBar('Invalid weight format');
+            setState(() {
+              _isLoading = false;
+            });
+            return;
+          }
+        }
 
-      setState(() {
-        _isLoading = false;
-      });
+        // Submit product to the API
+        final result = await ProductService.submitProduct(
+          productName: _nameController.text.trim(),
+          description: _descriptionController.text.trim(),
+          price: double.parse(_priceController.text),
+          category: _selectedCategory,
+          stockQuantity: int.parse(_stockController.text),
+          condition: _selectedCondition,
+          brand: _brandController.text.trim().isEmpty ? null : _brandController.text.trim(),
+          weight: weight,
+          dimensions: _dimensionsController.text.trim().isEmpty ? null : _dimensionsController.text.trim(),
+          isRefurbished: _selectedCondition != 'New',
+          inStock: _isInStock,
+          featuredProduct: _isFeatured,
+          images: _selectedImages,
+        );
 
-      _showSuccessSnackBar('Product added successfully!');
-      Navigator.pop(context);
+        setState(() {
+          _isLoading = false;
+        });
+
+        if (result['success']) {
+          _showSuccessSnackBar(result['message'] ?? 'Product added successfully!');
+          Navigator.pop(context, result['data']); // Return the created product data
+        } else {
+          _showErrorSnackBar(result['error'] ?? 'Failed to create product');
+        }
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+        _showErrorSnackBar('Error: ${e.toString()}');
+      }
     }
   }
 

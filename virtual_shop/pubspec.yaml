@@ -51,7 +51,8 @@ dependencies:
   google_sign_in: ^6.3.0
   palette_generator: ^0.3.3+7
   video_player: ^2.10.0
-  image: ^4.1.0
+  # image: ^4.1.0
+  image: ^4.1.7  
   lottie: ^3.1.2
   #google_generative_ai: ^0.4.0
   google_generative_ai: ^0.2.2
