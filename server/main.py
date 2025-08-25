@@ -5,14 +5,19 @@ import os
 import tempfile
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import Header
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from sentence_transformers import SentenceTransformer
 import numpy as np
 import json
 from ast import literal_eval
+import os as _os
 
 from server.supabase_client import get_supabase, SupabaseNotConfigured
+import httpx
+import base64
+import json as _json
 
 app = FastAPI()
 
@@ -105,6 +110,529 @@ def _normalize_embedding(vec) -> list:
     if hasattr(vec, "tolist"):
         return [float(x) for x in vec.tolist()]
     return [float(x) for x in vec]
+
+
+def _decode_jwt_sub(authorization: str | None) -> str | None:
+    """Best-effort decode of JWT `sub` (user id) from Authorization header.
+
+    This does not verify signature; the server only uses it to associate
+    the review with the requester while still requiring a valid-looking token.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    parts = token.split(".")
+    if len(parts) < 2:
+        return None
+    payload_b64 = parts[1]
+    # base64url decode with padding
+    pad = '=' * (-len(payload_b64) % 4)
+    try:
+        payload_bytes = base64.urlsafe_b64decode(payload_b64 + pad)
+        payload = _json.loads(payload_bytes.decode("utf-8"))
+        # Supabase places the user id in `sub`
+        sub = payload.get("sub") or payload.get("user_id")
+        if isinstance(sub, str) and sub:
+            return sub
+    except Exception:
+        return None
+    return None
+
+
+def _get_user_from_authorization(authorization: str | None) -> str | None:
+    """Verify JWT using Supabase and return `sub` if valid; fallback to decode.
+
+    Returns the user id (auth.users.id) or None.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    client = getattr(app.state, "supabase", None)
+    if client is not None:
+        try:
+            claims = client.auth.get_claims(jwt=token)
+            # supabase-py may return dict or object with .claims
+            data = claims if isinstance(
+                claims, dict) else getattr(claims, "claims", None)
+            if isinstance(data, dict):
+                sub = data.get("sub") or data.get("user_id")
+                if isinstance(sub, str) and sub:
+                    return sub
+        except Exception:
+            pass
+    # Fallback to insecure local decode
+    return _decode_jwt_sub(authorization)
+
+
+@app.get("/products/search")
+def search_products(q: str, limit: int = 24):
+    """Vector-based text search over product images.
+
+    - Encodes text `q` using CLIP text encoder
+    - Computes cosine similarity vs `product_images.image_vectors`
+    - Aggregates by product, keeping the best image score per product
+    - Returns product rows with an attached representative `image_url` and `score`
+    """
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    q = (q or "").strip()
+    if not q:
+        return {"results": []}
+
+    model = _get_clip()
+    try:
+        qvec = model.encode(q)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail=f"Failed to encode query: {e}")
+
+    import numpy as np  # local import to keep top clean
+    q = np.array(qvec, dtype=np.float32)
+    q = q / (np.linalg.norm(q) + 1e-9)
+
+    # Fetch all image vectors with product mapping
+    res = client.table("product_images").select(
+        "product_id,image_url,image_vectors"
+    ).execute()
+    if getattr(res, "error", None):
+        raise HTTPException(status_code=400, detail=str(res.error))
+    items = res.data or []
+
+    best_by_product = {}
+    for it in items:
+        pid = it.get("product_id")
+        vec = it.get("image_vectors")
+        if not pid or vec is None:
+            continue
+        if isinstance(vec, str):
+            try:
+                vec = json.loads(vec)
+            except Exception:
+                try:
+                    vec = literal_eval(vec)
+                except Exception:
+                    continue
+        v = np.array(vec, dtype=np.float32)
+        v = v / (np.linalg.norm(v) + 1e-9)
+        score = float(np.dot(q, v))
+        cur = best_by_product.get(pid)
+        if cur is None or score > cur["score"]:
+            best_by_product[pid] = {
+                "score": score,
+                "image_url": it.get("image_url"),
+            }
+
+    ranked = sorted(best_by_product.items(),
+                    key=lambda kv: kv[1]["score"], reverse=True)
+    ranked = ranked[: max(0, int(limit))]
+    top_ids = [pid for pid, _ in ranked]
+    if not top_ids:
+        return {"results": []}
+
+    prod_res = client.table("products").select(
+        "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at"
+    ).in_("id", top_ids).execute()
+    if getattr(prod_res, "error", None):
+        raise HTTPException(status_code=400, detail=str(prod_res.error))
+    prods = prod_res.data or []
+    by_id = {str(p["id"]): p for p in prods}
+
+    results = []
+    for pid, meta in ranked:
+        p = by_id.get(str(pid))
+        if not p:
+            continue
+        obj = dict(p)
+        if meta.get("image_url"):
+            obj["image_url"] = meta["image_url"]
+        obj["score"] = meta["score"]
+        results.append(obj)
+
+    return {"results": results}
+
+
+# ---------------------- REVIEWS API ----------------------
+
+@app.get("/products/{product_id}/reviews")
+def get_product_reviews(product_id: str, limit: int | None = None):
+    """Return reviews for a product, enriched with basic user profile info and a summary.
+
+    Response:
+      {
+        "reviews": [
+          {"id": ..., "product_id": ..., "user_auth_id": ..., "rating": 5,
+           "review": "...", "created_at": "...", "user": {"name": "...", "profile_image": "..."}}
+        ],
+        "summary": {"count": N, "avg": 4.3}
+      }
+    """
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    q = client.table("reviews").select(
+        "id,product_id,user_auth_id,rating,review,created_at"
+    ).eq("product_id", product_id).order("created_at", desc=True)
+    if limit is not None and int(limit) > 0:
+        q = q.limit(int(limit))
+    res = q.execute()
+    if getattr(res, "error", None):
+        raise HTTPException(status_code=400, detail=str(res.error))
+    rows = res.data or []
+
+    # Summary across ALL reviews for this product (unbounded)
+    sum_cnt = client.table("reviews").select(
+        "rating").eq("product_id", product_id).execute()
+    cnt = 0
+    avg = 0.0
+    if not getattr(sum_cnt, "error", None):
+        ratings = sum_cnt.data or []
+        cnt = len(ratings)
+        if cnt:
+            s = 0
+            for r in ratings:
+                try:
+                    s += int(r.get("rating") or 0)
+                except Exception:
+                    pass
+            avg = float(s) / float(cnt) if cnt else 0.0
+
+    # Enrich with user info from public.users by auth_id
+    auth_ids = list({r.get("user_auth_id")
+                    for r in rows if r.get("user_auth_id")})
+    by_auth: dict[str, dict] = {}
+    if auth_ids:
+        prof = client.table("users").select(
+            "auth_id,name,profile_image").in_("auth_id", auth_ids).execute()
+        if not getattr(prof, "error", None):
+            for u in (prof.data or []):
+                aid = u.get("auth_id")
+                if aid:
+                    by_auth[str(aid)] = {
+                        "name": u.get("name") or "",
+                        "profile_image": u.get("profile_image") or "",
+                    }
+
+    out = []
+    for r in rows:
+        uinfo = by_auth.get(str(r.get("user_auth_id")) or "", {})
+        obj = dict(r)
+        obj["user"] = uinfo
+        out.append(obj)
+
+    return {"reviews": out, "summary": {"count": cnt, "avg": avg}}
+
+
+@app.post("/products/{product_id}/reviews")
+def submit_product_review(product_id: str, payload: dict, authorization: str | None = Header(default=None)):
+    """Create a review for a product. Requires Authorization bearer token.
+
+    Body: { rating: 1..5, review: string }
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+
+    rating = payload.get("rating")
+    review_text = (payload.get("review") or "").strip()
+    try:
+        rating = int(rating)
+    except Exception:
+        raise HTTPException(
+            status_code=400, detail="rating must be an integer 1-5")
+    if rating < 1 or rating > 5:
+        raise HTTPException(
+            status_code=400, detail="rating must be between 1 and 5")
+    if not review_text:
+        raise HTTPException(status_code=400, detail="review text is required")
+
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    row = {
+        "product_id": product_id,
+        "user_auth_id": user_id,
+        "rating": rating,
+        "review": review_text,
+    }
+    res = client.table("reviews").insert(row).execute()
+    if getattr(res, "error", None):
+        raise HTTPException(status_code=400, detail=str(res.error))
+    data = res.data
+    # Return the inserted row id if available
+    rid = None
+    if isinstance(data, list) and data:
+        rid = data[0].get("id")
+    elif isinstance(data, dict):
+        rid = data.get("id")
+    return {"ok": True, "id": rid}
+
+
+# ---------------------- CART API (bridges to Supabase RPC) ----------------------
+
+@app.get("/cart")
+def get_cart(authorization: str | None = Header(default=None)):
+    # Use authenticated context; if no JWT, reject
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+    try:
+        base = os.environ.get("SUPABASE_URL")
+        anon = os.environ.get("SUPABASE_ANON_KEY")
+        if not base or not anon:
+            raise HTTPException(
+                status_code=500, detail="SUPABASE_URL/ANON_KEY missing on server")
+        url = base.rstrip("/") + "/rest/v1/cart_items"
+        headers = {
+            "apikey": anon,
+            "Authorization": authorization,
+        }
+        params = {"select": "id,product_id,quantity,unit_price,updated_at"}
+        with httpx.Client(timeout=15.0) as s:
+            r = s.get(url, headers=headers, params=params)
+        if r.status_code >= 400:
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+        return {"items": r.json()}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/cart/add")
+def add_to_cart(payload: dict, authorization: str | None = Header(default=None)):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+    product_id = payload.get("product_id")
+    quantity = int(payload.get("quantity") or 1)
+    if not product_id:
+        raise HTTPException(status_code=400, detail="product_id is required")
+    if quantity <= 0:
+        raise HTTPException(status_code=400, detail="quantity must be > 0")
+    try:
+        base = os.environ.get("SUPABASE_URL")
+        anon = os.environ.get("SUPABASE_ANON_KEY")
+        if not base or not anon:
+            raise HTTPException(
+                status_code=500, detail="SUPABASE_URL/ANON_KEY missing on server")
+        url = base.rstrip("/") + "/rest/v1/rpc/add_to_cart_self"
+        headers = {
+            "apikey": anon,
+            "Authorization": authorization,
+            "Content-Type": "application/json",
+        }
+        body = {"p_product_id": product_id, "p_quantity": quantity}
+        with httpx.Client(timeout=20.0) as s:
+            r = s.post(url, headers=headers, json=body)
+        if r.status_code >= 400:
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+        return r.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/cart/checkout")
+def checkout(authorization: str | None = Header(default=None)):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+    try:
+        base = os.environ.get("SUPABASE_URL")
+        anon = os.environ.get("SUPABASE_ANON_KEY")
+        if not base or not anon:
+            raise HTTPException(
+                status_code=500, detail="SUPABASE_URL/ANON_KEY missing on server")
+        url = base.rstrip("/") + "/rest/v1/rpc/checkout_self"
+        headers = {
+            "apikey": anon,
+            "Authorization": authorization,
+        }
+        with httpx.Client(timeout=30.0) as s:
+            r = s.post(url, headers=headers)
+        if r.status_code >= 400:
+            raise HTTPException(status_code=r.status_code, detail=r.text)
+        return r.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/suggest")
+def suggest_tokens(q: str):
+    q = (q or "").strip()
+    if not q:
+        return {"color": None, "category": None}
+
+    # Heuristic fallback lists (used only if Gemini unavailable/errors)
+    colors = [
+        'black', 'white', 'red', 'green', 'blue', 'yellow', 'orange', 'purple',
+        'pink', 'brown', 'gray', 'grey', 'beige', 'maroon', 'navy', 'teal'
+    ]
+    styles = [
+        'oversized', 'slim', 'regular', 'relaxed', 'vintage', 'streetwear',
+        'casual', 'formal', 'sport', 'retro', 'minimal', 'cozy'
+    ]
+
+    # Try Gemini structured output if configured
+    if _os.environ.get("GEMINI_API_KEY"):
+        try:
+            from google import genai
+            from pydantic import BaseModel
+            from typing import Optional, List as _List
+
+            class Facet(BaseModel):
+                title: str
+                options: _List[str] = []
+
+            class Suggestions(BaseModel):
+                primary: Optional[str] = None
+                facets: _List[Facet] = []
+
+            client_g = genai.Client(api_key=_os.environ.get("GEMINI_API_KEY"))
+            resp = client_g.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[
+                    {
+                        "role": "user",
+                        "parts": [
+                            (
+                                "Analyze the shopping query and return structured facets for refinement. "
+                                "Return JSON with: primary (main product category term as a string or null), "
+                                "facets (array). Each facet has title (e.g., 'category', 'color', 'taste', 'brand', 'material', 'fit', 'season', 'occasion') "
+                                "and options (array of short strings). Include a 'taste' facet if relevant (e.g., streetwear, minimal, cozy). "
+                                "For each facet, provide 5 to 10 distinct, relevant options when possible, ordered by relevance. "
+                                "Options must be concise (1-2 words). If the query is narrow, propose closely related alternatives to reach at least 5. "
+                                "Use null/empty when unknown.\n"
+                                f"Query: {q}"
+                            )
+                        ],
+                    }
+                ],
+                config={
+                    "response_mime_type": "application/json",
+                    "response_schema": Suggestions,
+                },
+            )
+            parsed = getattr(resp, "parsed", None)
+            if parsed is not None:
+                # Extract normalized dict
+                primary = getattr(parsed, "primary", None)
+                facets = []
+                for f in getattr(parsed, "facets", []) or []:
+                    facets.append({"title": getattr(f, "title", "").strip(
+                    ), "options": list(getattr(f, "options", []) or [])})
+                return {"primary": primary, "facets": facets}
+
+            # Fallback: try to parse response.text as JSON
+            text = getattr(resp, "text", None) or ""
+            import json as _json
+            try:
+                data = _json.loads(text)
+                primary = data.get("primary") if isinstance(
+                    data, dict) else None
+                facets = data.get("facets") if isinstance(data, dict) else None
+                return {"primary": primary, "facets": facets or []}
+            except Exception:
+                pass
+        except Exception:
+            # Fall through to heuristic
+            pass
+
+    # Heuristic fallback if Gemini not configured or failed
+    ql = q.lower()
+    tokens = ql.split()
+    tokset = set(tokens)
+    color = next((c for c in colors if c in tokset), None)
+    # naive category guess: first non-color token
+    category = next((t for t in tokens if t not in colors), None)
+
+    # Build richer fallback facet options (5-10 each where possible)
+    # Category candidates from DB or common list
+    common_categories = [
+        'hoodie', 't-shirt', 'shirt', 'sweatshirt', 'jacket', 'coat', 'jeans', 'pants', 'shorts',
+        'dress', 'skirt', 'shoes', 'sneakers', 'boots', 'sandals', 'hat', 'cap', 'bag', 'sweater', 'cardigan'
+    ]
+    try:
+        client = getattr(app.state, "supabase", None)
+        if client is not None:
+            res = client.table("products").select("category").execute()
+            if not getattr(res, "error", None):
+                db_cats = [str(r.get("category") or "").lower()
+                           for r in (res.data or []) if r.get("category")]
+                # De-dup preserving order
+                seen = set()
+                merged = []
+                for x in db_cats + common_categories:
+                    if x and x not in seen:
+                        seen.add(x)
+                        merged.append(x)
+                common_categories = merged
+    except Exception:
+        pass
+
+    cat_opts = []
+    if category:
+        cat_opts.append(category)
+    # Add similar categories containing token substrings
+    for c in common_categories:
+        if len(cat_opts) >= 10:
+            break
+        if category and c == category:
+            continue
+        if not tokens or any(t in c for t in tokens):
+            cat_opts.append(c)
+    # Pad up to 5-10 with top categories
+    if len(cat_opts) < 5:
+        for c in common_categories:
+            if len(cat_opts) >= 5:
+                break
+            if c not in cat_opts:
+                cat_opts.append(c)
+    cat_opts = cat_opts[:10]
+
+    # Color options: include detected plus common palette
+    palette = [
+        'black', 'white', 'gray', 'grey', 'navy', 'green', 'red', 'blue', 'beige', 'brown', 'purple', 'pink', 'orange', 'yellow', 'teal'
+    ]
+    col_opts = []
+    if color:
+        col_opts.append(color)
+    for c in palette:
+        if len(col_opts) >= 10:
+            break
+        if c not in col_opts:
+            col_opts.append(c)
+    if len(col_opts) < 5:
+        # ensure at least 5
+        while len(col_opts) < 5:
+            col_opts.append('black')
+    col_opts = col_opts[:10]
+
+    # Taste/style options: include detected tokens and pad with common styles
+    found_styles = [s for s in styles if s in tokset]
+    taste_opts = []
+    taste_opts.extend(found_styles)
+    for s in styles:
+        if len(taste_opts) >= 10:
+            break
+        if s not in taste_opts:
+            taste_opts.append(s)
+    taste_opts = taste_opts[:10]
+
+    facet_list = []
+    if cat_opts:
+        facet_list.append({"title": "category", "options": cat_opts})
+    if col_opts:
+        facet_list.append({"title": "color", "options": col_opts})
+    if taste_opts:
+        facet_list.append({"title": "taste", "options": taste_opts})
+    return {"primary": category, "facets": facet_list}
 
 
 @app.post("/image-search/search")

@@ -39,4 +39,35 @@ class ProductRepository {
     final List<dynamic> arr = jsonDecode(resp.body) as List<dynamic>;
     return arr.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
   }
+
+  static Future<List<Product>> searchVector(
+    String query, {
+    int limit = 24,
+  }) async {
+    final uri = _uri(
+      '/products/search?q=${Uri.encodeQueryComponent(query)}&limit=$limit',
+    );
+    final resp = await http.get(uri);
+    if (resp.statusCode != 200) {
+      throw Exception('Vector search failed: ${resp.statusCode} ${resp.body}');
+    }
+    final Map<String, dynamic> data =
+        jsonDecode(resp.body) as Map<String, dynamic>;
+    final List<dynamic> results =
+        (data['results'] as List<dynamic>?) ?? const [];
+    return results
+        .map((e) => Product.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<Map<String, dynamic>> suggestTokens(String query) async {
+    final uri = _uri('/suggest?q=${Uri.encodeQueryComponent(query)}');
+    final resp = await http.get(uri);
+    if (resp.statusCode != 200) {
+      throw Exception('Suggest failed: ${resp.statusCode} ${resp.body}');
+    }
+    final Map<String, dynamic> data =
+        jsonDecode(resp.body) as Map<String, dynamic>;
+    return data;
+  }
 }

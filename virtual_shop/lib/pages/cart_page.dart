@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:virtual_shop/pages/checkout_page.dart'; // Import the CheckoutPage
+import 'package:virtual_shop/utils/cart_api.dart';
 
 class CartPage extends StatefulWidget {
   const CartPage({super.key});
@@ -9,27 +9,56 @@ class CartPage extends StatefulWidget {
 }
 
 class _CartPageState extends State<CartPage> {
-  // Dummy data for cart items
-  final List<Map<String, dynamic>> _cartItems = [
-    {
-      'image': 'assets/images/hoodie.png',
-      'name': 'Modern Hoodie',
-      'price': 45.99,
-      'quantity': 1,
-    },
-    {
-      'image': 'assets/images/hat.jpg',
-      'name': 'Stylish Hat',
-      'price': 25.50,
-      'quantity': 2,
-    },
-    {
-      'image': 'assets/images/glass.jpg',
-      'name': 'Cool Sunglasses',
-      'price': 80.00,
-      'quantity': 1,
-    },
-  ];
+  List<Map<String, dynamic>> _cartItems = [];
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCart();
+  }
+
+  double _asDouble(dynamic v) {
+    if (v == null) return 0.0;
+    if (v is num) return v.toDouble();
+    final s = v.toString();
+    return double.tryParse(s) ?? 0.0;
+  }
+
+  Future<void> _loadCart() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final rows = await CartApi.getCart();
+      // Backend returns id, product_id, quantity, unit_price
+      // Join of product image/name is not implemented here; show minimal info
+      setState(() {
+        _cartItems = rows
+            .map(
+              (e) => {
+                'image': null,
+                'name':
+                    'Product ${e['product_id']?.toString().substring(0, 8) ?? ''}',
+                'price': _asDouble(e['unit_price']),
+                'quantity': (e['quantity'] ?? 1) as int,
+              },
+            )
+            .cast<Map<String, dynamic>>()
+            .toList();
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
 
   void _incrementQuantity(int index) {
     setState(() {
@@ -66,15 +95,27 @@ class _CartPageState extends State<CartPage> {
       ),
       body: Column(
         children: [
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.only(top: 20),
-              itemCount: _cartItems.length,
-              itemBuilder: (context, index) {
-                return _buildCartItem(_cartItems[index], index);
-              },
+          if (_loading)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_error != null)
+            Expanded(
+              child: Center(
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              ),
+            )
+          else
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _loadCart,
+                child: ListView.builder(
+                  padding: const EdgeInsets.only(top: 20),
+                  itemCount: _cartItems.length,
+                  itemBuilder: (context, index) {
+                    return _buildCartItem(_cartItems[index], index);
+                  },
+                ),
+              ),
             ),
-          ),
           _buildSummary(),
         ],
       ),
@@ -92,15 +133,29 @@ class _CartPageState extends State<CartPage> {
         ),
         child: Row(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(15),
-              child: Image.asset(
-                item['image'],
+            if (item['image'] is String && (item['image'] as String).isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(15),
+                child: Image.asset(
+                  item['image'] as String,
+                  width: 70,
+                  height: 70,
+                  fit: BoxFit.cover,
+                ),
+              )
+            else
+              Container(
                 width: 70,
                 height: 70,
-                fit: BoxFit.cover,
+                decoration: BoxDecoration(
+                  color: Colors.grey[800],
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.image_not_supported,
+                  color: Colors.white54,
+                ),
               ),
-            ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -231,19 +286,21 @@ class _CartPageState extends State<CartPage> {
           ),
           const SizedBox(height: 20),
           ElevatedButton(
-            onPressed: () {
-              // Navigate to the CheckoutPage and pass the current cart items, subtotal, shipping, and total
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => CheckoutPage(
-                    cartItems: _cartItems,
-                    subtotal: subtotal, // Pass subtotal
-                    shipping: shipping, // Pass shipping
-                    total: total, // Pass total
-                  ),
-                ),
-              );
+            onPressed: () async {
+              try {
+                await CartApi.checkout();
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Checkout successful')),
+                );
+                await _loadCart();
+                // Optionally navigate to a confirmation page
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text('Checkout failed: $e')));
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFFADFF2F),

@@ -4,6 +4,7 @@ class Product {
   final String image; // Primary image URL or asset path
   final List<String> images; // All image URLs if available
   final double rating; // Average rating if available
+  final int? ratingCount;
   final double price;
   final String category;
   final String description;
@@ -29,6 +30,7 @@ class Product {
     required this.image,
     this.images = const [],
     this.rating = 0,
+    this.ratingCount,
     required this.price,
     required this.category,
     required this.description,
@@ -111,6 +113,9 @@ class Product {
       rating: _toDouble(
         json['rating'] ?? json['avg_rating'] ?? json['rating_avg'],
         0,
+      ),
+      ratingCount: _toInt(
+        json['rating_count'] ?? json['reviews_count'] ?? json['count_reviews'],
       ),
       price: _toDouble(json['price'], 0),
       category: json['category']?.toString() ?? '',
