@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/pages/product_detail_page.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class RelatedProductsPage extends StatelessWidget {
   final List<Product> products;
@@ -72,21 +73,7 @@ class ProductCard extends StatelessWidget {
             aspectRatio: 1,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                product.image,
-                fit: BoxFit.cover,
-                width: double.infinity,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  color: Colors.grey[700],
-                  child: const Center(
-                    child: Icon(
-                      Icons.broken_image,
-                      color: Colors.white,
-                      size: 40,
-                    ),
-                  ),
-                ),
-              ),
+              child: _ProductImage(image: product.image),
             ),
           ),
           const SizedBox(height: 8),
@@ -132,6 +119,56 @@ class ProductCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ProductImage extends StatelessWidget {
+  final String image;
+  const _ProductImage({required this.image});
+
+  bool get _isNetwork =>
+      image.startsWith('http://') || image.startsWith('https://');
+
+  @override
+  Widget build(BuildContext context) {
+    // Grid thumbnails ~ half screen width on 2-column grid
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final double itemLogicalWidth = (screenWidth - 16 * 2 - 16) / 2;
+    final double pxW =
+        itemLogicalWidth * MediaQuery.of(context).devicePixelRatio;
+    final int? cacheWidth = (pxW.isFinite && pxW > 0) ? pxW.round() : null;
+    if (_isNetwork) {
+      return CachedNetworkImage(
+        imageUrl: image,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        memCacheWidth: cacheWidth,
+        fadeInDuration: const Duration(milliseconds: 200),
+        placeholder: (context, url) => Container(
+          color: Colors.grey[800],
+          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+        errorWidget: (context, url, error) => Container(
+          color: Colors.grey[700],
+          child: const Center(
+            child: Icon(Icons.broken_image, color: Colors.white, size: 40),
+          ),
+        ),
+      );
+    }
+    return Image.asset(
+      image,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      cacheWidth: cacheWidth,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (context, error, stackTrace) => Container(
+        color: Colors.grey[700],
+        child: const Center(
+          child: Icon(Icons.broken_image, color: Colors.white, size: 40),
+        ),
       ),
     );
   }

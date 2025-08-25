@@ -1,10 +1,9 @@
-# FastAPI requirements
-fastapi>=0.100.0
-uvicorn[standard]>=0.23.0
-pydantic>=2.0.0
-python-dotenv>=1.0.0
-asyncpg>=0.28.0
-pillow>=10.0.0
-sentence-transformers>=2.2.0
-vecs>=0.4.0
-matplotlib>=3.7.0
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+supabase>=2.0.0
+python-dotenv>=1.0.1
+python-multipart>=0.0.9
+Pillow>=10.4.0
+sentence-transformers>=3.0.1
+torch>=2.3.0
+numpy>=1.26.0

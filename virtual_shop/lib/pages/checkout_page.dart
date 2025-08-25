@@ -132,7 +132,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           style: const TextStyle(color: Colors.white70),
                         ),
                         Text(
-                          '\৳${(item['price'] * item['quantity']).toStringAsFixed(2)}',
+                          '৳${(item['price'] * item['quantity']).toStringAsFixed(2)}',
                           style: const TextStyle(color: Colors.white),
                         ),
                       ],
@@ -152,7 +152,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   ).textTheme.titleMedium?.copyWith(color: Colors.white),
                 ),
                 Text(
-                  '\৳${_subtotal.toStringAsFixed(2)}', // Use passed subtotal
+                  '৳${_subtotal.toStringAsFixed(2)}', // Use passed subtotal
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
@@ -169,7 +169,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   style: TextStyle(fontSize: 16, color: Colors.white),
                 ),
                 Text(
-                  '\৳${_shipping.toStringAsFixed(2)}', // Use passed shipping
+                  '৳${_shipping.toStringAsFixed(2)}', // Use passed shipping
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -190,7 +190,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   ),
                 ),
                 Text(
-                  '\৳${_total.toStringAsFixed(2)}', // Use passed total
+                  '৳${_total.toStringAsFixed(2)}', // Use passed total
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: const Color(0xFFADFF2F),

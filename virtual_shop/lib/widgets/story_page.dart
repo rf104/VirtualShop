@@ -4,7 +4,6 @@ import 'package:virtual_shop/widgets/glass_container.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'dart:async';
 
-import 'dart:ui';
 import 'package:virtual_shop/models/product.dart';
 
 import 'package:virtual_shop/pages/product_detail_page.dart';

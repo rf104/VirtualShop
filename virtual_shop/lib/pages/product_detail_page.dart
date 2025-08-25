@@ -9,6 +9,7 @@ import 'package:virtual_shop/pages/edit_product.dart';
 import 'package:virtual_shop/pages/virtual_try_on_page.dart';
 
 import 'package:virtual_shop/widgets/glass_container.dart';
+import 'package:virtual_shop/utils/related_products_service.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
@@ -25,61 +26,43 @@ class ProductDetailPage extends StatefulWidget {
 }
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
-  List<Product> _dummyRelatedProducts() {
-    return [
-      Product(
-        name: 'Winter Shearling Jacket',
-        image: 'assets/images/hoodie.jpg',
-        rating: 4.1,
-        price: 120.00,
-        category: 'Cozy Wear',
-        weather: 'Rainy',
-        temp: '16-22°C',
-        event: 'Promenade',
-        description:
-            'Elevate your winter wardrobe with this luxurious white shearling jacket, paired with a chic black turtleneck and matching skirt. Perfect for a stylish day out, this outfit combines comfort and high fashion, ensuring you stay warm and turn heads wherever you go.',
-      ),
-      Product(
-        name: 'Casual Chic Ensemble',
-        image: 'assets/images/hat1.jpg',
-        rating: 4.1,
-        price: 85.50,
-        category: 'Regular Wear',
-        weather: 'Neutral',
-        temp: '16-22°C',
-        event: 'Promenade',
-        description:
-            'Step out in style with this casual chic ensemble featuring a trendy hat.',
-      ),
-      Product(
-        name: 'Urban Explorer Outfit',
-        image: 'assets/images/shoe.jpg',
-        rating: 4.9,
-        price: 215.00,
-        category: 'Cozy Wear',
-        weather: 'Rainy',
-        temp: '16-22°C',
-        event: 'Promenade',
-        description:
-            'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
-      ),
-      Product(
-        name: 'Classic glasses',
-        image: 'assets/images/glass1.jpg',
-        rating: 4.9,
-        price: 215.00,
-        category: 'Cozy Wear',
-        weather: 'Rainy',
-        temp: '16-22°C',
-        event: 'Promenade',
-        description:
-            'Elevate your style with these classic glasses, perfect for any occasion. Their timeless design and high-quality material make them a must-have accessory for those who appreciate both fashion and functionality.',
-      ),
-    ];
+  List<Product> _related = const [];
+  bool _loadingRelated = false;
+  String? _relatedError;
+
+  Future<void> _loadRelated() async {
+    if ((widget.product.id).isEmpty) return;
+    setState(() {
+      _loadingRelated = true;
+      _relatedError = null;
+    });
+    try {
+      final results = await RelatedProductsService.fetchRelatedProducts(
+        productId: widget.product.id,
+        limit: 8,
+      );
+      if (mounted) {
+        setState(() {
+          _related = results;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _relatedError = e.toString();
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingRelated = false;
+        });
+      }
+    }
   }
 
   Widget _buildRelatedProductsSection() {
-    final related = _dummyRelatedProducts();
+    final related = _related;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -89,32 +72,39 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 220,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: related.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              final product = related[index];
-              return SizedBox(
-                width: 150,
-                child: GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            ProductDetailPage(product: product),
-                      ),
-                    );
-                  },
-                  child: _ProductCardMini(product: product),
-                ),
-              );
-            },
+        if (_loadingRelated)
+          const Center(child: CircularProgressIndicator())
+        else if (_relatedError != null)
+          Text(_relatedError!, style: const TextStyle(color: Colors.red))
+        else if (related.isEmpty)
+          Text('No related products', style: TextStyle(color: Colors.grey[600]))
+        else
+          SizedBox(
+            height: 220,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: related.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final product = related[index];
+                return SizedBox(
+                  width: 150,
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              ProductDetailPage(product: product),
+                        ),
+                      );
+                    },
+                    child: _ProductCardMini(product: product),
+                  ),
+                );
+              },
+            ),
           ),
-        ),
       ],
     );
   }
@@ -133,20 +123,10 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             aspectRatio: 1,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.asset(
-                product.image,
+              child: _AdaptiveImage(
+                image: product.image,
                 fit: BoxFit.cover,
                 width: double.infinity,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  color: Colors.grey[700],
-                  child: const Center(
-                    child: Icon(
-                      Icons.broken_image,
-                      color: Colors.white,
-                      size: 40,
-                    ),
-                  ),
-                ),
               ),
             ),
           ),
@@ -216,6 +196,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       _dominantColor = Colors.white;
       _updatePaletteGenerator();
     }
+    _loadRelated();
   }
 
   @override
@@ -558,8 +539,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  _buildInfoChips(),
-                  const SizedBox(height: 24),
+                  // _buildInfoChips(),
+                  // const SizedBox(height: 24),
                   Stack(
                     children: [
                       ClipRRect(
@@ -617,6 +598,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildInfoChips() {
     return Wrap(
       spacing: 10.0,
@@ -658,6 +640,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   builder: (context) => VirtualTryOnPage(
                     productImage: widget.product.image,
                     productName: widget.product.name,
+                    productId: widget.product.id,
                   ),
                 ),
               );
@@ -797,15 +780,27 @@ class _AdaptiveImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (_isNetwork) {
+      // Estimate cache size based on provided width/height or screen size,
+      // guarding against Infinity/NaN widths.
+      final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+      final double logicalW = (width != null && width!.isFinite && width! > 0)
+          ? width!
+          : MediaQuery.of(context).size.width;
+      final double pxW = logicalW.isFinite && logicalW > 0
+          ? logicalW * devicePixelRatio
+          : double.nan;
+      final int? memW = (pxW.isFinite && pxW > 0) ? pxW.round() : null;
       return CachedNetworkImage(
         imageUrl: image,
         height: height,
         width: width,
         fit: fit,
+        memCacheWidth: memW,
+        fadeInDuration: const Duration(milliseconds: 200),
         placeholder: (context, url) => SizedBox(
           height: height,
           width: width,
-          child: const Center(child: CircularProgressIndicator()),
+          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
         ),
         errorWidget: (context, url, error) => SizedBox(
           height: height,
@@ -814,11 +809,21 @@ class _AdaptiveImage extends StatelessWidget {
         ),
       );
     }
+    final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+    final double logicalW = (width != null && width!.isFinite && width! > 0)
+        ? width!
+        : MediaQuery.of(context).size.width;
+    final double pxW = logicalW.isFinite && logicalW > 0
+        ? logicalW * devicePixelRatio
+        : double.nan;
+    final int? cacheWidth = (pxW.isFinite && pxW > 0) ? pxW.round() : null;
     return Image.asset(
       image,
       height: height,
       width: width,
       fit: fit,
+      cacheWidth: cacheWidth,
+      filterQuality: FilterQuality.medium,
       errorBuilder: (context, error, stack) => SizedBox(
         height: height,
         width: width,

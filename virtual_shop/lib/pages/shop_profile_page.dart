@@ -16,7 +16,7 @@ class ShopProfilePage extends StatefulWidget {
 class _ShopProfilePageState extends State<ShopProfilePage> {
   // Dynamic data resolved from auth user and profile row
   String _shopName = 'Urban Drift';
-  String _shopCategory = 'Grocery & Daily Essentials';
+  final String _shopCategory = 'Grocery & Daily Essentials';
   String? _phone;
   String? _email;
   String? _address;

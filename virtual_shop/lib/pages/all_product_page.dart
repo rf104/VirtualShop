@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/pages/product_detail_page.dart';
+import 'package:virtual_shop/utils/product_repository.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class AllProductPage extends StatefulWidget {
   const AllProductPage({super.key});
@@ -10,156 +12,37 @@ class AllProductPage extends StatefulWidget {
 }
 
 class _AllProductPageState extends State<AllProductPage> {
-  final List<Product> products = [
-    Product(
-      name: 'Winter Shearling Jacket',
-      image: 'assets/images/hoodie.jpg',
-      rating: 4.1,
-      price: 120.00,
-      category: 'Cozy Wear',
-      weather: 'Rainy',
-      temp: '16-22°C',
-      event: 'Promenade',
-      description:
-          'Elevate your winter wardrobe with this luxurious white shearling jacket, paired with a chic black turtleneck and matching skirt. Perfect for a stylish day out, this outfit combines comfort and high fashion, ensuring you stay warm and turn heads wherever you go.',
-    ),
-    Product(
-      name: 'Casual Chic Ensemble',
-      image: 'assets/images/hat1.jpg',
-      rating: 4.1,
-      price: 85.50,
-      category: 'Regular Wear',
-      weather: 'Neutral',
-      temp: '16-22°C',
-      event: 'Promenade',
-      description:
-          'Step out in style with this casual chic ensemble featuring a trendy hat.',
-    ),
-    Product(
-      name: 'Urban Explorer Outfit',
-      image: 'assets/images/shoe.jpg',
-      rating: 4.9,
-      price: 215.00,
-      category: 'Cozy Wear',
-      weather: 'Rainy',
-      temp: '16-22°C',
-      event: 'Promenade',
-      description:
-          'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
-    ),
-    Product(
-      name: 'Classic glasses',
-      image: 'assets/images/glass1.jpg',
-      rating: 4.9,
-      price: 215.00,
-      category: 'Cozy Wear',
-      weather: 'Rainy',
-      temp: '16-22°C',
-      event: 'Promenade',
-      description:
-          'Elevate your style with these classic glasses, perfect for any occasion. Their timeless design and high-quality material make them a must-have accessory for those who appreciate both fashion and functionality.',
-    ),
-    Product(
-      name: 'Winter Shearling Jacket',
-      image: 'assets/images/hoodie.jpg',
-      rating: 4.1,
-      price: 120.00,
-      category: 'Cozy Wear',
-      weather: 'Rainy',
-      temp: '16-22°C',
-      event: 'Promenade',
-      description:
-          'Elevate your winter wardrobe with this luxurious white shearling jacket, paired with a chic black turtleneck and matching skirt. Perfect for a stylish day out, this outfit combines comfort and high fashion, ensuring you stay warm and turn heads wherever you go.',
-    ),
-    Product(
-      name: 'Casual Chic Ensemble',
-      image: 'assets/images/hat1.jpg',
-      rating: 4.1,
-      price: 85.50,
-      category: 'Regular Wear',
-      weather: 'Neutral',
-      temp: '16-22°C',
-      event: 'Promenade',
-      description:
-          'Step out in style with this casual chic ensemble featuring a trendy hat.',
-    ),
-    Product(
-      name: 'Premimum Glass',
-      image: 'assets/images/glass.jpg',
-      rating: 4.9,
-      price: 215.00,
-      category: 'Cozy Wear',
-      weather: 'Rainy',
-      temp: '16-22°C',
-      event: 'Promenade',
-      description:
-          'Elevate your style with this premium glass, perfect for any occasion. Its sleek design and high-quality material make it a must-have accessory for those who appreciate both fashion and functionality.',
-    ),
-    Product(
-      name: 'Urban Explorer Outfit',
-      image: 'assets/images/demo5.jpg',
-      rating: 4.9,
-      price: 215.00,
-      category: 'Cozy Wear',
-      weather: 'Rainy',
-      temp: '16-22°C',
-      event: 'Promenade',
-      description:
-          'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
-    ),
-    Product(
-      name: 'Winter Shearling Jacket',
-      image: 'assets/images/hoodie.jpg',
-      rating: 4.1,
-      price: 120.00,
-      category: 'Cozy Wear',
-      weather: 'Rainy',
-      temp: '16-22°C',
-      event: 'Promenade',
-      description:
-          'Elevate your winter wardrobe with this luxurious white shearling jacket, paired with a chic black turtleneck and matching skirt. Perfect for a stylish day out, this outfit combines comfort and high fashion, ensuring you stay warm and turn heads wherever you go.',
-    ),
-    Product(
-      name: 'Casual Chic Ensemble',
-      image: 'assets/images/hat1.jpg',
-      rating: 4.1,
-      price: 85.50,
-      category: 'Regular Wear',
-      weather: 'Neutral',
-      temp: '16-22°C',
-      event: 'Promenade',
-      description:
-          'Step out in style with this casual chic ensemble featuring a trendy hat.',
-    ),
-    Product(
-      name: 'Urban Explorer Outfit',
-      image: 'assets/images/shoe.jpg',
-      rating: 4.9,
-      price: 215.00,
-      category: 'Cozy Wear',
-      weather: 'Rainy',
-      temp: '16-22°C',
-      event: 'Promenade',
-      description:
-          'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
-    ),
-    Product(
-      name: 'Urban Explorer Outfit',
-      image: 'assets/images/demo5.jpg',
-      rating: 4.9,
-      price: 215.00,
-      category: 'Cozy Wear',
-      weather: 'Rainy',
-      temp: '16-22°C',
-      event: 'Promenade',
-      description:
-          'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
-    ),
-  ];
+  List<Product> _products = const [];
+  String _query = '';
+  bool _loading = true;
+  String? _error;
 
-  final String _selectedWeather = 'Rainy';
-  final String _selectedTemp = '16-22°C';
-  final String _selectedEvent = 'Promenade';
+  // Filter chip placeholders removed for now
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchProducts();
+  }
+
+  Future<void> _fetchProducts() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final items = await ProductRepository.fetchAll();
+      setState(() {
+        _products = items;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -179,7 +62,7 @@ class _AllProductPageState extends State<AllProductPage> {
               // const SizedBox(height: 20),
               // _buildFilterChips(),
               const SizedBox(height: 20),
-              Expanded(child: _buildProductGrid()),
+              Expanded(child: _buildBody()),
               const SizedBox(height: 20),
             ],
           ),
@@ -207,7 +90,7 @@ class _AllProductPageState extends State<AllProductPage> {
           ],
         ),
         Row(
-          children: [_buildHeaderButton('Items', products.length.toString())],
+          children: [_buildHeaderButton('Items', _products.length.toString())],
         ),
       ],
     );
@@ -236,8 +119,9 @@ class _AllProductPageState extends State<AllProductPage> {
   }
 
   Widget _buildSearchBar() {
-    return const TextField(
-      decoration: InputDecoration(
+    return TextField(
+      onChanged: (v) => setState(() => _query = v.trim()),
+      decoration: const InputDecoration(
         hintText: 'Type to search...',
         prefixIcon: Icon(Icons.search),
         suffixIcon: Icon(Icons.filter_list),
@@ -293,7 +177,40 @@ class _AllProductPageState extends State<AllProductPage> {
   //   );
   // }
 
-  Widget _buildProductGrid() {
+  Widget _buildBody() {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Failed to load products',
+              style: TextStyle(color: Colors.red[300]),
+            ),
+            const SizedBox(height: 8),
+            Text(_error!, style: const TextStyle(color: Colors.white70)),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: _fetchProducts,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+    final filtered = _products
+        .where((p) {
+          if (_query.isEmpty) return true;
+          final q = _query.toLowerCase();
+          return p.name.toLowerCase().contains(q) ||
+              p.category.toLowerCase().contains(q) ||
+              (p.brand?.toLowerCase().contains(q) ?? false);
+        })
+        .toList(growable: false);
+
     return GridView.builder(
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
@@ -301,9 +218,9 @@ class _AllProductPageState extends State<AllProductPage> {
         mainAxisSpacing: 16,
         childAspectRatio: 0.7,
       ),
-      itemCount: products.length,
+      itemCount: filtered.length,
       itemBuilder: (context, index) {
-        final product = products[index];
+        final product = filtered[index];
         return GestureDetector(
           onTap: () {
             Navigator.push(
@@ -336,11 +253,7 @@ class ProductCard extends StatelessWidget {
         Expanded(
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.asset(
-              product.image,
-              fit: BoxFit.cover,
-              width: double.infinity,
-            ),
+            child: _AdaptiveImage(image: product.image),
           ),
         ),
         const SizedBox(height: 8),
@@ -386,6 +299,57 @@ class ProductCard extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _AdaptiveImage extends StatelessWidget {
+  final String image;
+  const _AdaptiveImage({required this.image});
+
+  bool get _isNetwork =>
+      image.startsWith('http://') || image.startsWith('https://');
+
+  @override
+  Widget build(BuildContext context) {
+    // Estimate on-screen width for thumbnail cache sizing
+    double screenWidth = MediaQuery.of(context).size.width;
+    // Grid: 2 columns, horizontal padding 16*2 and spacing 16
+    double itemLogicalWidth = (screenWidth - 32 - 16) / 2;
+    final double pxW =
+        (itemLogicalWidth) * MediaQuery.of(context).devicePixelRatio;
+    final int? cacheWidth = (pxW.isFinite && pxW > 0) ? pxW.round() : null;
+    if (_isNetwork) {
+      return CachedNetworkImage(
+        imageUrl: image,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        memCacheWidth: cacheWidth,
+        fadeInDuration: const Duration(milliseconds: 200),
+        placeholder: (context, url) => Container(
+          color: Colors.grey[800],
+          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+        errorWidget: (context, url, error) => Container(
+          color: Colors.grey[700],
+          child: const Center(
+            child: Icon(Icons.broken_image, color: Colors.white, size: 40),
+          ),
+        ),
+      );
+    }
+    return Image.asset(
+      image,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      cacheWidth: cacheWidth,
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (context, error, stack) => Container(
+        color: Colors.grey[700],
+        child: const Center(
+          child: Icon(Icons.broken_image, color: Colors.white, size: 40),
+        ),
+      ),
     );
   }
 }

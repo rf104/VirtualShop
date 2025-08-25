@@ -1,7 +1,15 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:virtual_shop/utils/product_api.dart';
+
+class _TaggedImage {
+  final File file;
+  final String tag;
+  const _TaggedImage({required this.file, required this.tag});
+}
 
 class AddProductPage extends StatefulWidget {
   const AddProductPage({super.key});
@@ -24,7 +32,10 @@ class _AddProductPageState extends State<AddProductPage> {
   String _selectedCondition = 'New';
   bool _isFeatured = false;
   bool _isInStock = true;
-  final List<File> _selectedImages = [];
+  // Legacy storage retained for hot-reload migration (could be List<File> in older builds)
+  final List _selectedImages = [];
+  // New authoritative typed images list with unique tags
+  final List<_TaggedImage> _images = [];
   final ImagePicker _picker = ImagePicker();
   bool _isLoading = false;
 
@@ -42,6 +53,41 @@ class _AddProductPageState extends State<AddProductPage> {
   ];
 
   final List<String> _conditions = ['New', 'Like New', 'Good', 'Fair', 'Poor'];
+
+  String _generateImageTag() {
+    final random = Random.secure();
+    final timestamp = DateTime.now().microsecondsSinceEpoch;
+    final salt = random.nextInt(0x7fffffff);
+    return 'img_${timestamp}_$salt';
+  }
+
+  void _migrateLegacyImagesIfNeeded() {
+    if (_images.isNotEmpty) return;
+    if (_selectedImages.isEmpty) return;
+    final first = _selectedImages.first;
+    if (first is File) {
+      for (final item in List<File>.from(_selectedImages)) {
+        _images.add(_TaggedImage(file: item, tag: _generateImageTag()));
+      }
+      _selectedImages.clear();
+    } else if (first is _TaggedImage) {
+      _images.addAll(List<_TaggedImage>.from(_selectedImages));
+      _selectedImages.clear();
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _migrateLegacyImagesIfNeeded();
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    // Called on hot reload; migrate any legacy state.
+    _migrateLegacyImagesIfNeeded();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -460,7 +506,7 @@ class _AddProductPageState extends State<AddProductPage> {
               ),
               const Spacer(),
               Text(
-                '${_selectedImages.length}/5',
+                '${_images.length}/5',
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.7),
                   fontSize: 14,
@@ -469,7 +515,7 @@ class _AddProductPageState extends State<AddProductPage> {
             ],
           ),
           const SizedBox(height: 16),
-          if (_selectedImages.isEmpty)
+          if (_images.isEmpty)
             GestureDetector(
               onTap: _pickImages,
               child: Container(
@@ -537,16 +583,62 @@ class _AddProductPageState extends State<AddProductPage> {
                         mainAxisSpacing: 8,
                         childAspectRatio: 1,
                       ),
-                      itemCount: _selectedImages.length,
+                      itemCount: _images.length,
                       itemBuilder: (context, index) {
+                        final tagged = _images[index];
                         return Stack(
+                          key: ValueKey(tagged.tag),
                           children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8),
-                                image: DecorationImage(
-                                  image: FileImage(_selectedImages[index]),
-                                  fit: BoxFit.cover,
+                            Hero(
+                              tag: tagged.tag,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  image: DecorationImage(
+                                    image: FileImage(tagged.file),
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              top: 4,
+                              left: 4,
+                              child: GestureDetector(
+                                onTap: () => _editImageTag(index),
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.6),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.edit,
+                                    color: Colors.white,
+                                    size: 14,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              left: 4,
+                              bottom: 4,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.6),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  tagged.tag,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ),
@@ -575,8 +667,8 @@ class _AddProductPageState extends State<AddProductPage> {
                     );
                   },
                 ),
-                if (_selectedImages.length < 5) const SizedBox(height: 16),
-                if (_selectedImages.length < 5)
+                if (_images.length < 5) const SizedBox(height: 16),
+                if (_images.length < 5)
                   GestureDetector(
                     onTap: _pickImages,
                     child: Container(
@@ -769,8 +861,10 @@ class _AddProductPageState extends State<AddProductPage> {
       if (images.isNotEmpty) {
         setState(() {
           for (var image in images) {
-            if (_selectedImages.length < 5) {
-              _selectedImages.add(File(image.path));
+            if (_images.length < 5) {
+              _images.add(
+                _TaggedImage(file: File(image.path), tag: _generateImageTag()),
+              );
             }
           }
         });
@@ -782,13 +876,127 @@ class _AddProductPageState extends State<AddProductPage> {
 
   void _removeImage(int index) {
     setState(() {
-      _selectedImages.removeAt(index);
+      if (index >= 0 && index < _images.length) {
+        _images.removeAt(index);
+      }
     });
+  }
+
+  Future<void> _editImageTag(int index) async {
+    if (index < 0 || index >= _images.length) return;
+    final current = _images[index];
+    final controller = TextEditingController(text: current.tag);
+    String? error;
+
+    String? validate(String value) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return 'Tag cannot be empty';
+      if (!RegExp(r'^[A-Za-z0-9_\-\.]+$').hasMatch(trimmed)) {
+        return 'Use letters, numbers, _ - . only';
+      }
+      final exists = _images.any((e) => e.tag == trimmed && e != current);
+      if (exists) return 'Tag must be unique';
+      return null;
+    }
+
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            error ??= validate(controller.text);
+            return AlertDialog(
+              backgroundColor: Colors.grey[900],
+              title: const Text(
+                'Edit Image Tag',
+                style: TextStyle(color: Colors.white),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: controller,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Enter unique tag',
+                      hintStyle: TextStyle(
+                        color: Colors.white.withOpacity(0.5),
+                      ),
+                      errorText: error,
+                      filled: true,
+                      fillColor: Colors.grey[800],
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.all(12),
+                    ),
+                    onChanged: (v) {
+                      setLocalState(() {
+                        error = validate(v);
+                      });
+                    },
+                  ),
+                  if (error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          error!,
+                          style: const TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    final value = controller.text;
+                    final err = validate(value);
+                    if (err == null) {
+                      Navigator.pop(context, value.trim());
+                    } else {
+                      setLocalState(() {
+                        error = err;
+                      });
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null) return;
+    final newTag = result.trim();
+    if (newTag == current.tag) return;
+    final err = RegExp(r'^[A-Za-z0-9_\-\.]+$').hasMatch(newTag)
+        ? null
+        : 'invalid';
+    if (err == null && !_images.any((e) => e.tag == newTag && e != current)) {
+      setState(() {
+        _images[index] = _TaggedImage(file: current.file, tag: newTag);
+      });
+    } else {
+      _showErrorSnackBar('Invalid or duplicate tag');
+    }
   }
 
   Future<void> _saveProduct() async {
     if (_formKey.currentState!.validate()) {
-      if (_selectedImages.isEmpty) {
+      if (_images.isEmpty) {
         _showErrorSnackBar('Please add at least one product image');
         return;
       }
@@ -797,8 +1005,37 @@ class _AddProductPageState extends State<AddProductPage> {
         _isLoading = true;
       });
 
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
+      try {
+        final images = _images.map((e) => e.file).toList(growable: false);
+        final tags = _images.map((e) => e.tag).toList(growable: false);
+        await ProductApi.createProduct(
+          name: _nameController.text.trim(),
+          description: _descriptionController.text.trim(),
+          category: _selectedCategory,
+          brand: _brandController.text.trim().isEmpty
+              ? null
+              : _brandController.text.trim(),
+          price: double.parse(_priceController.text.trim()),
+          stock: int.parse(_stockController.text.trim()),
+          condition: _selectedCondition,
+          weightKg: _weightController.text.trim().isEmpty
+              ? null
+              : double.tryParse(_weightController.text.trim()),
+          dimensions: _dimensionsController.text.trim().isEmpty
+              ? null
+              : _dimensionsController.text.trim(),
+          isFeatured: _isFeatured,
+          isInStock: _isInStock,
+          images: images,
+          imageTags: tags,
+        );
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+        _showErrorSnackBar('Failed to add product: $e');
+        return;
+      }
 
       setState(() {
         _isLoading = false;

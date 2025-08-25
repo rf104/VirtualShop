@@ -9,6 +9,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:pro_image_editor/designs/frosted_glass/frosted_glass.dart';
+import 'package:virtual_shop/utils/supabase_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 // import 'package:firebase_ai/firebase_ai.dart';
 
 // Custom widget for virtual try-on image picking
@@ -183,10 +185,12 @@ class _VirtualTryOnImagePickerState extends State<VirtualTryOnImagePicker> {
 class VirtualTryOnPage extends StatefulWidget {
   final String productImage;
   final String productName;
+  final String productId;
   const VirtualTryOnPage({
     super.key,
     required this.productImage,
     required this.productName,
+    required this.productId,
   });
 
   @override
@@ -205,14 +209,11 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
       dotenv.env['SEGMIND_API_KEY_2'],
       dotenv.env['SEGMIND_API_KEY_3'],
     ];
-    // Segmind expects base64 with data URI prefix
-    // final String userDataUri = 'data:image/jpeg;base64,$userBase64';
-    final String userDataUri =
-        'https://wnaqfhqvghulydvnpcsw.supabase.co/storage/v1/object/public/productimages/person.jpg';
-
-    // final String productDataUri = 'data:image/jpeg;base64,$productBase64';
-    final String productDataUri =
-        'https://wnaqfhqvghulydvnpcsw.supabase.co/storage/v1/object/public/productimages/s-l1200.jpg';
+    // Segmind accepts public URLs or inline data URIs; use inline for reliability
+    final String userBase64 = base64Encode(userImageBytes);
+    final String productBase64 = base64Encode(productImageBytes);
+    final String userDataUri = 'data:image/jpeg;base64,$userBase64';
+    final String productDataUri = 'data:image/jpeg;base64,$productBase64';
 
     final Map<String, dynamic> payload = {
       'crop': false,
@@ -253,6 +254,8 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
   late final List<Map<String, String>> _productViewsWithSizes;
   late String _currentMainImage;
   int _selectedThumbnailIndex = 0;
+  bool _isLoadingImages = false;
+  String? _imagesError;
 
   Uint8List? _userImage;
   Uint8List? _virtualTryOnImage;
@@ -262,16 +265,61 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
   @override
   void initState() {
     super.initState();
-    _productViewsWithSizes = [
-      {'image': 'assets/images/s.jpg', 'size': 'S'},
-      {'image': 'assets/images/m.jpg', 'size': 'M'},
-      {'image': 'assets/images/L.jpg', 'size': 'L'},
-      {'image': 'assets/images/xl.jpg', 'size': 'XL'},
-    ];
-    _currentMainImage = _productViewsWithSizes[0]['image']!;
+    _productViewsWithSizes = [];
+    _currentMainImage = widget.productImage;
+    _fetchProductImages();
+  }
+
+  Future<void> _fetchProductImages() async {
+    setState(() {
+      _isLoadingImages = true;
+      _imagesError = null;
+    });
+    try {
+      final rows = await supabase
+          .from('product_images')
+          .select('image_url, Tag, created_at')
+          .eq('product_id', widget.productId)
+          .order('created_at', ascending: true);
+      final List<Map<String, String>> items = [];
+      for (final r in rows) {
+        final url = (r['image_url'] ?? '').toString();
+        if (url.isEmpty) continue;
+        final tag = (r['Tag'] ?? '').toString();
+        items.add({'image': url, 'size': tag});
+      }
+      if (mounted) {
+        setState(() {
+          _productViewsWithSizes
+            ..clear()
+            ..addAll(items);
+          // If current image isn't among fetched, prefer first fetched
+          if (_productViewsWithSizes.isNotEmpty) {
+            final idx = _productViewsWithSizes.indexWhere(
+              (e) => e['image'] == _currentMainImage,
+            );
+            if (idx >= 0) {
+              _selectedThumbnailIndex = idx;
+            } else {
+              _selectedThumbnailIndex = 0;
+              _currentMainImage = _productViewsWithSizes[0]['image']!;
+            }
+          }
+          _isLoadingImages = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _imagesError = e.toString();
+          _isLoadingImages = false;
+        });
+      }
+    }
   }
 
   void _cycleMainImage() {
+    if (_productViewsWithSizes.length < 2) return;
     setState(() {
       _selectedThumbnailIndex =
           (_selectedThumbnailIndex + 1) % _productViewsWithSizes.length;
@@ -364,41 +412,42 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
                             const SizedBox(height: 12),
                             ElevatedButton(
                               onPressed: () {
-                                if (_userImage != null)
+                                if (_userImage != null) {
                                   _generateVirtualTryOn(_userImage!);
+                                }
                               },
                               child: const Text('Retry'),
                             ),
                           ],
                         )
                       : _virtualTryOnImage != null
-                      ? Image.memory(
-                          _virtualTryOnImage!,
-                          key: ValueKey('done_${_virtualTryOnImage!.hashCode}'),
-                          fit: BoxFit.contain,
+                      ? Builder(
+                          builder: (context) {
+                            final double logicalW = MediaQuery.of(
+                              context,
+                            ).size.width;
+                            final int cacheW =
+                                (logicalW *
+                                        MediaQuery.of(context).devicePixelRatio)
+                                    .round();
+                            return Image.memory(
+                              _virtualTryOnImage!,
+                              key: ValueKey(
+                                'done_${_virtualTryOnImage!.hashCode}',
+                              ),
+                              fit: BoxFit.contain,
+                              cacheWidth: cacheW,
+                              filterQuality: FilterQuality.medium,
+                              gaplessPlayback: true,
+                            );
+                          },
                         )
                       : const SizedBox.shrink(),
                 ),
               ),
             )
           else
-            Expanded(
-              flex: 5,
-              child: Center(
-                child: Image.asset(
-                  _currentMainImage,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Center(
-                      child: Text(
-                        'Could not load image asset',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
+            Expanded(flex: 5, child: Center(child: _buildMainProductImage())),
           const SizedBox(height: 20),
           if (_userImage == null)
             GestureDetector(
@@ -416,60 +465,152 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
             ),
           if (_userImage == null) ...[
             const SizedBox(height: 20),
-            SizedBox(
-              height: 100,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: _productViewsWithSizes.length,
-                itemBuilder: (context, index) {
-                  final isSelected = _selectedThumbnailIndex == index;
-                  final sizeLabel = _productViewsWithSizes[index]['size']!;
-                  final imagePath = _productViewsWithSizes[index]['image']!;
-                  return GestureDetector(
-                    onTap: () => _onThumbnailTapped(index),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 70,
-                            height: 70,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: isSelected
-                                    ? Colors.black
-                                    : Colors.transparent,
-                                width: 2,
+            if (_isLoadingImages)
+              const SizedBox(
+                height: 100,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_imagesError != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Text(
+                  _imagesError!,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              )
+            else if (_productViewsWithSizes.isNotEmpty)
+              SizedBox(
+                height: 100,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _productViewsWithSizes.length,
+                  itemBuilder: (context, index) {
+                    final isSelected = _selectedThumbnailIndex == index;
+                    final sizeLabel =
+                        _productViewsWithSizes[index]['size'] ?? '';
+                    final imageUrl = _productViewsWithSizes[index]['image']!;
+                    return GestureDetector(
+                      onTap: () => _onThumbnailTapped(index),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 70,
+                              height: 70,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? Colors.black
+                                      : Colors.transparent,
+                                  width: 2,
+                                ),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: _buildThumb(imageUrl),
                               ),
                             ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: Image.asset(imagePath, fit: BoxFit.cover),
+                            const SizedBox(height: 4),
+                            Text(
+                              sizeLabel.isNotEmpty
+                                  ? 'Size: $sizeLabel'
+                                  : 'Variant ${index + 1}',
+                              style: TextStyle(
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                                color: isSelected
+                                    ? Colors.yellow
+                                    : Colors.grey[700],
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Size: $sizeLabel',
-                            style: TextStyle(
-                              fontWeight: isSelected
-                                  ? FontWeight.bold
-                                  : FontWeight.normal,
-                              color: isSelected
-                                  ? Colors.yellow
-                                  : Colors.grey[700],
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
             const SizedBox(height: 30),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildThumb(String src) {
+    final isNet = src.startsWith('http://') || src.startsWith('https://');
+    if (isNet) {
+      final double logicalSize = 70; // matches container size
+      final double px = logicalSize * MediaQuery.of(context).devicePixelRatio;
+      final int? cacheW = (px.isFinite && px > 0) ? px.round() : null;
+      return CachedNetworkImage(
+        imageUrl: src,
+        fit: BoxFit.cover,
+        memCacheWidth: cacheW,
+        fadeInDuration: const Duration(milliseconds: 150),
+        placeholder: (context, url) => Container(
+          color: Colors.grey[800],
+          child: const Center(
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+        ),
+        errorWidget: (_, __, ___) =>
+            const Center(child: Icon(Icons.broken_image)),
+      );
+    }
+    return Image.asset(
+      src,
+      fit: BoxFit.cover,
+      cacheWidth: (() {
+        final px = 70 * MediaQuery.of(context).devicePixelRatio;
+        return (px.isFinite && px > 0) ? px.round() : null;
+      })(),
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, __, ___) =>
+          const Center(child: Icon(Icons.broken_image)),
+    );
+  }
+
+  Widget _buildMainProductImage() {
+    final src = _currentMainImage;
+    final isNet = src.startsWith('http://') || src.startsWith('https://');
+    if (isNet) {
+      final double logicalW = MediaQuery.of(context).size.width;
+      final double px = logicalW * MediaQuery.of(context).devicePixelRatio;
+      final int? cacheW = (px.isFinite && px > 0) ? px.round() : null;
+      return CachedNetworkImage(
+        imageUrl: src,
+        fit: BoxFit.contain,
+        memCacheWidth: cacheW,
+        fadeInDuration: const Duration(milliseconds: 200),
+        placeholder: (context, url) =>
+            const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        errorWidget: (_, __, ___) => const Text(
+          'Could not load image',
+          style: TextStyle(color: Colors.red),
+        ),
+      );
+    }
+    return Image.asset(
+      src,
+      fit: BoxFit.contain,
+      cacheWidth: (() {
+        final px =
+            MediaQuery.of(context).size.width *
+            MediaQuery.of(context).devicePixelRatio;
+        return (px.isFinite && px > 0) ? px.round() : null;
+      })(),
+      filterQuality: FilterQuality.medium,
+      errorBuilder: (_, __, ___) => const Text(
+        'Could not load image asset',
+        style: TextStyle(color: Colors.red),
       ),
     );
   }
@@ -515,9 +656,10 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
       _virtualTryOnImage = null;
     });
     try {
-      // Load product image asset as bytes
-      final ByteData productData = await rootBundle.load(widget.productImage);
-      final Uint8List productImageBytes = productData.buffer.asUint8List();
+      // Load selected product image (asset or network) as bytes
+      final Uint8List productImageBytes = await _loadImageBytes(
+        _currentMainImage,
+      );
       // Try Segmind first
       try {
         final Uint8List? segmindResult = await _trySegmindVTON(
@@ -641,8 +783,9 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
             final trimmed = line.trim();
             if (trimmed.isEmpty ||
                 !trimmed.startsWith('{') ||
-                !trimmed.endsWith('}'))
+                !trimmed.endsWith('}')) {
               continue;
+            }
             try {
               final Map<String, dynamic> jsonLine = jsonDecode(trimmed);
               final candidates = jsonLine['candidates'] ?? [];
@@ -685,6 +828,20 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
         _error = 'Failed to generate virtual try-on image. ${e.toString()}';
         _isGenerating = false;
       });
+    }
+  }
+
+  Future<Uint8List> _loadImageBytes(String src) async {
+    try {
+      if (src.startsWith('http://') || src.startsWith('https://')) {
+        final resp = await http.get(Uri.parse(src));
+        if (resp.statusCode == 200) return resp.bodyBytes;
+        throw Exception('HTTP ${resp.statusCode}');
+      }
+      final data = await rootBundle.load(src);
+      return data.buffer.asUint8List();
+    } catch (e) {
+      throw Exception('Load image failed: $e');
     }
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:pro_image_editor/designs/frosted_glass/frosted_glass.dart';
+import 'package:virtual_shop/utils/image_search_service.dart';
 import '../pages/related_products_page.dart';
 import '../models/product.dart';
 
@@ -71,14 +72,13 @@ class _ShopScreenshotsWidgetState extends State<ShopScreenshotsWidget> {
   }
 
   final ImagePicker _picker = ImagePicker();
+  bool _loading = false;
 
   Future<void> _pickAndEditImage(ImageSource source) async {
     final XFile? pickedFile = await _picker.pickImage(source: source);
     if (pickedFile == null) return;
 
     final Uint8List imageBytes = await pickedFile.readAsBytes();
-
-    //need to convert base64
 
     if (!mounted) return;
     Navigator.push(
@@ -91,13 +91,39 @@ class _ShopScreenshotsWidgetState extends State<ShopScreenshotsWidget> {
               if (widget.onImagePicked != null) {
                 widget.onImagePicked!(editedBytes);
               }
-              Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-                MaterialPageRoute(
-                  builder: (context) =>
-                      RelatedProductsPage(products: _dummyProducts()),
-                ),
-                (route) => route.isFirst,
-              );
+              if (!mounted) return;
+              setState(() => _loading = true);
+              try {
+                final products = await ImageSearchService.searchProductsByImage(
+                  imageBytes: editedBytes,
+                  limit: 6,
+                );
+                if (!mounted) return;
+                Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (context) => RelatedProductsPage(
+                      products: products.isNotEmpty
+                          ? products
+                          : _dummyProducts(),
+                    ),
+                  ),
+                  (route) => route.isFirst,
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Image search failed: $e')),
+                );
+                Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        RelatedProductsPage(products: _dummyProducts()),
+                  ),
+                  (route) => route.isFirst,
+                );
+              } finally {
+                if (mounted) setState(() => _loading = false);
+              }
             },
           ),
           configs: ProImageEditorConfigs(
@@ -169,12 +195,18 @@ class _ShopScreenshotsWidgetState extends State<ShopScreenshotsWidget> {
             'UPLOAD YOUR PHOTOS TO FIND A STYLE MATCH',
             style: TextStyle(fontSize: 12, color: Colors.white70),
           ),
+          if (_loading) ...[
+            const SizedBox(height: 16),
+            const LinearProgressIndicator(),
+          ],
           const SizedBox(height: 24),
           Row(
             children: [
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => _pickAndEditImage(ImageSource.camera),
+                  onPressed: _loading
+                      ? null
+                      : () => _pickAndEditImage(ImageSource.camera),
                   icon: const Icon(
                     Icons.camera_alt_outlined,
                     color: Colors.white,
@@ -195,7 +227,9 @@ class _ShopScreenshotsWidgetState extends State<ShopScreenshotsWidget> {
               const SizedBox(width: 16),
               Expanded(
                 child: ElevatedButton.icon(
-                  onPressed: () => _pickAndEditImage(ImageSource.gallery),
+                  onPressed: _loading
+                      ? null
+                      : () => _pickAndEditImage(ImageSource.gallery),
                   icon: const Icon(
                     Icons.photo_library_outlined,
                     color: Colors.white,

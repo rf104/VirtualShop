@@ -6,10 +6,7 @@ import 'package:virtual_shop/models/product.dart';
 class EditProductPage extends StatefulWidget {
   final Product product;
 
-  const EditProductPage({
-    super.key,
-    required this.product,
-  });
+  const EditProductPage({super.key, required this.product});
 
   @override
   State<EditProductPage> createState() => _EditProductPageState();
@@ -29,23 +26,49 @@ class _EditProductPageState extends State<EditProductPage> {
   String _selectedCondition = 'New';
   bool _isFeatured = false;
   bool _isInStock = true;
-  final List<dynamic> _selectedImages = []; // Can contain both File and String (asset path)
+  final List<dynamic> _selectedImages =
+      []; // Can contain both File and String (asset path)
   final ImagePicker _picker = ImagePicker();
   bool _isLoading = false;
 
-  Map<String, List<String>> _categoryMap = {
-    'Clothing': ['Cozy Wear', 'Regular Wear', 'Party Wear', 'Formal Wear', 'Sports Wear'],
+  final Map<String, List<String>> _categoryMap = {
+    'Clothing': [
+      'Cozy Wear',
+      'Regular Wear',
+      'Party Wear',
+      'Formal Wear',
+      'Sports Wear',
+    ],
     'Accessories': ['Glasses', 'Hats', 'Bags', 'Jewelry', 'Watches'],
     'Footwear': ['Casual', 'Formal', 'Sports', 'Sandals', 'Boots'],
   };
-  
+
   late List<String> _categories;
   late String _productType;
 
   final List<String> _conditions = ['New', 'Like New', 'Good', 'Fair', 'Poor'];
-  final List<String> _weatherOptions = ['Sunny', 'Rainy', 'Cloudy', 'Snowy', 'Windy'];
-  final List<String> _tempOptions = ['10-12C', '20-22C', '30-35C', '35-40C', '1-10C'];
-  final List<String> _eventOptions = ['Promonde', 'NewYear', 'Party', 'Business', 'Sports', 'Beach'];
+  final List<String> _weatherOptions = [
+    'Sunny',
+    'Rainy',
+    'Cloudy',
+    'Snowy',
+    'Windy',
+  ];
+  final List<String> _tempOptions = [
+    '10-12C',
+    '20-22C',
+    '30-35C',
+    '35-40C',
+    '1-10C',
+  ];
+  final List<String> _eventOptions = [
+    'Promonde',
+    'NewYear',
+    'Party',
+    'Business',
+    'Sports',
+    'Beach',
+  ];
 
   late String _selectedWeather;
   late String _selectedTemp;
@@ -53,9 +76,14 @@ class _EditProductPageState extends State<EditProductPage> {
 
   String _determineProductType(String name) {
     name = name.toLowerCase();
-    if (name.contains('glass') || name.contains('watch') || name.contains('bag') || name.contains('hat')) {
+    if (name.contains('glass') ||
+        name.contains('watch') ||
+        name.contains('bag') ||
+        name.contains('hat')) {
       return 'Accessories';
-    } else if (name.contains('shoe') || name.contains('boot') || name.contains('sandal')) {
+    } else if (name.contains('shoe') ||
+        name.contains('boot') ||
+        name.contains('sandal')) {
       return 'Footwear';
     } else {
       return 'Clothing';
@@ -66,39 +94,45 @@ class _EditProductPageState extends State<EditProductPage> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.product.name);
-    _descriptionController = TextEditingController(text: widget.product.description);
-    _priceController = TextEditingController(text: widget.product.price.toString());
+    _descriptionController = TextEditingController(
+      text: widget.product.description,
+    );
+    _priceController = TextEditingController(
+      text: widget.product.price.toString(),
+    );
     _stockController = TextEditingController(text: "1"); // Default stock
     _brandController = TextEditingController();
     _weightController = TextEditingController();
     _dimensionsController = TextEditingController();
-    
+
     // Determine product type and set categories
     _productType = _determineProductType(widget.product.name);
     _categories = _categoryMap[_productType] ?? _categoryMap['Clothing']!;
-    _selectedCategory = widget.product.category.isNotEmpty 
-        ? widget.product.category 
+    _selectedCategory = widget.product.category.isNotEmpty
+        ? widget.product.category
         : _categories.first;
 
     // Initialize with safe default values
     _selectedWeather = _weatherOptions.contains(widget.product.weather)
         ? widget.product.weather
         : _weatherOptions.first;
-    
+
     _selectedTemp = _tempOptions.contains(widget.product.temp)
         ? widget.product.temp
         : _tempOptions.first;
-    
+
     _selectedEvent = _eventOptions.contains(widget.product.event)
         ? widget.product.event
         : _eventOptions.first;
-    
+
     // Initialize the first image if product has one
     if (widget.product.image.isNotEmpty) {
       if (widget.product.image.startsWith('assets/')) {
         _selectedImages.add(widget.product.image); // Store asset path as is
       } else {
-        _selectedImages.add(File(widget.product.image)); // Create File object for local files
+        _selectedImages.add(
+          File(widget.product.image),
+        ); // Create File object for local files
       }
     }
   }
@@ -161,10 +195,7 @@ class _EditProductPageState extends State<EditProductPage> {
             dropdownColor: Colors.grey[800],
             style: const TextStyle(color: Colors.white),
             items: items.map((String item) {
-              return DropdownMenuItem<String>(
-                value: item,
-                child: Text(item),
-              );
+              return DropdownMenuItem<String>(value: item, child: Text(item));
             }).toList(),
           ),
         ),
@@ -203,7 +234,12 @@ class _EditProductPageState extends State<EditProductPage> {
                 Text(
                   subtitle,
                   style: TextStyle(
-                    color: const Color.fromARGB(255, 240, 237, 237).withOpacity(0.7),
+                    color: const Color.fromARGB(
+                      255,
+                      240,
+                      237,
+                      237,
+                    ).withOpacity(0.7),
                     fontSize: 14,
                   ),
                 ),
@@ -286,10 +322,7 @@ class _EditProductPageState extends State<EditProductPage> {
                       SizedBox(height: 8),
                       Text(
                         'Add up to 5 images',
-                        style: TextStyle(
-                          color: Colors.grey,
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: Colors.grey, fontSize: 14),
                       ),
                     ],
                   ),
@@ -318,7 +351,8 @@ class _EditProductPageState extends State<EditProductPage> {
                             image: DecorationImage(
                               image: _selectedImages[index] is File
                                   ? FileImage(_selectedImages[index] as File)
-                                  : AssetImage(_selectedImages[index] as String) as ImageProvider,
+                                  : AssetImage(_selectedImages[index] as String)
+                                        as ImageProvider,
                               fit: BoxFit.cover,
                             ),
                           ),
@@ -423,10 +457,10 @@ class _EditProductPageState extends State<EditProductPage> {
         weather: _selectedWeather,
         temp: _selectedTemp,
         event: _selectedEvent,
-        image: _selectedImages.isNotEmpty 
-            ? (_selectedImages.first is File 
-                ? (_selectedImages.first as File).path 
-                : _selectedImages.first as String)
+        image: _selectedImages.isNotEmpty
+            ? (_selectedImages.first is File
+                  ? (_selectedImages.first as File).path
+                  : _selectedImages.first as String)
             : '',
         rating: widget.product.rating, // Preserve the existing rating
       );
@@ -438,10 +472,10 @@ class _EditProductPageState extends State<EditProductPage> {
       try {
         // TODO: Implement the actual save functionality here
         await Future.delayed(const Duration(seconds: 2)); // Simulate API call
-        
+
         // Pass the updated product back to the previous screen
         Navigator.pop(context, updatedProduct);
-        
+
         _showSuccessSnackBar('Product updated successfully!');
         Navigator.pop(context);
       } catch (e) {
@@ -456,19 +490,13 @@ class _EditProductPageState extends State<EditProductPage> {
 
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
   void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.green),
     );
   }
 
@@ -508,7 +536,10 @@ class _EditProductPageState extends State<EditProductPage> {
             child: GestureDetector(
               onTap: _saveProduct,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFADFF2F),
                   borderRadius: BorderRadius.circular(8),
@@ -519,7 +550,9 @@ class _EditProductPageState extends State<EditProductPage> {
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : const Text(
@@ -543,7 +576,7 @@ class _EditProductPageState extends State<EditProductPage> {
             children: [
               _buildImageSection(),
               const SizedBox(height: 24),
-              
+
               // Basic Information
               _buildSectionTitle('Basic Information'),
               const SizedBox(height: 16),
@@ -589,7 +622,7 @@ class _EditProductPageState extends State<EditProductPage> {
                 hint: 'Enter brand name',
               ),
               const SizedBox(height: 24),
-              
+
               // Pricing & Stock
               _buildSectionTitle('Pricing & Stock'),
               const SizedBox(height: 16),
@@ -644,7 +677,7 @@ class _EditProductPageState extends State<EditProductPage> {
                 },
               ),
               const SizedBox(height: 24),
-              
+
               // Product Details
               _buildSectionTitle('Product Details'),
               const SizedBox(height: 16),
@@ -704,7 +737,7 @@ class _EditProductPageState extends State<EditProductPage> {
                 },
               ),
               const SizedBox(height: 24),
-              
+
               // Settings
               _buildSectionTitle('Settings'),
               const SizedBox(height: 16),
@@ -729,7 +762,7 @@ class _EditProductPageState extends State<EditProductPage> {
                 },
               ),
               const SizedBox(height: 32),
-              
+
               // Save Button
               SizedBox(
                 width: double.infinity,
@@ -751,7 +784,9 @@ class _EditProductPageState extends State<EditProductPage> {
                     child: _isLoading
                         ? const Center(
                             child: CircularProgressIndicator(
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
                             ),
                           )
                         : const Text(
