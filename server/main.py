@@ -1,18 +1,37 @@
 # main.py
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import logging
+import os
 from db import get_db_connection_pool, pool
 from routers import (
     users, product, products, orders, payments, referral,
     refunds, reports, reviews, sellers, wishlist,
     stock, promotions, product_img, order_items,
-    try_on_history, model3d, image_search
+    try_on_history, model3d, image_search, comprehensive_product
 )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="🛒 E-Commerce API")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify exact origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Create uploads directory if it doesn't exist
+uploads_dir = "uploads"
+os.makedirs(uploads_dir, exist_ok=True)
+
+# Mount static files for serving uploaded images
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
 @app.on_event("startup")
@@ -55,3 +74,5 @@ app.include_router(try_on_history.router, prefix="/try-on",
 app.include_router(model3d.router, prefix="/model3d", tags=["3D Models"])
 app.include_router(image_search.router,
                    prefix="/image-search", tags=["Image Search"])
+app.include_router(comprehensive_product.router,
+                   prefix="/comprehensive-product", tags=["Comprehensive Product"])

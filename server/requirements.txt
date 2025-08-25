@@ -8,3 +8,10 @@ pillow>=10.0.0
 sentence-transformers>=2.2.0
 vecs>=0.4.0
 matplotlib>=3.7.0
+python-multipart>=0.0.6
+requests>=2.31.0
+
+# Additional networking and debugging dependencies
+httpx>=0.24.0
+aiofiles>=23.0.0
+websockets>=11.0.0
