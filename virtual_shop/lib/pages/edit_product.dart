@@ -1,6 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'dart:io';
 import 'package:virtual_shop/models/product.dart';
 
 class EditProductPage extends StatefulWidget {
@@ -22,8 +23,8 @@ class _EditProductPageState extends State<EditProductPage> {
   late TextEditingController _weightController;
   late TextEditingController _dimensionsController;
 
-  String _selectedCategory = 'Electronics';
-  String _selectedCondition = 'New';
+  late ProductCategory _selectedCategory;
+  late ProductCondition _selectedCondition;
   bool _isFeatured = false;
   bool _isInStock = true;
   final List<dynamic> _selectedImages =
@@ -31,108 +32,37 @@ class _EditProductPageState extends State<EditProductPage> {
   final ImagePicker _picker = ImagePicker();
   bool _isLoading = false;
 
-  final Map<String, List<String>> _categoryMap = {
-    'Clothing': [
-      'Cozy Wear',
-      'Regular Wear',
-      'Party Wear',
-      'Formal Wear',
-      'Sports Wear',
-    ],
-    'Accessories': ['Glasses', 'Hats', 'Bags', 'Jewelry', 'Watches'],
-    'Footwear': ['Casual', 'Formal', 'Sports', 'Sandals', 'Boots'],
-  };
-
-  late List<String> _categories;
-  late String _productType;
-
-  final List<String> _conditions = ['New', 'Like New', 'Good', 'Fair', 'Poor'];
-  final List<String> _weatherOptions = [
-    'Sunny',
-    'Rainy',
-    'Cloudy',
-    'Snowy',
-    'Windy',
-  ];
-  final List<String> _tempOptions = [
-    '10-12C',
-    '20-22C',
-    '30-35C',
-    '35-40C',
-    '1-10C',
-  ];
-  final List<String> _eventOptions = [
-    'Promonde',
-    'NewYear',
-    'Party',
-    'Business',
-    'Sports',
-    'Beach',
-  ];
-
-  late String _selectedWeather;
-  late String _selectedTemp;
-  late String _selectedEvent;
-
-  String _determineProductType(String name) {
-    name = name.toLowerCase();
-    if (name.contains('glass') ||
-        name.contains('watch') ||
-        name.contains('bag') ||
-        name.contains('hat')) {
-      return 'Accessories';
-    } else if (name.contains('shoe') ||
-        name.contains('boot') ||
-        name.contains('sandal')) {
-      return 'Footwear';
-    } else {
-      return 'Clothing';
-    }
-  }
-
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.product.name);
-    _descriptionController = TextEditingController(
-      text: widget.product.description,
+    final p = widget.product;
+
+    _nameController = TextEditingController(text: p.name);
+    _descriptionController = TextEditingController(text: p.description);
+    _priceController = TextEditingController(text: p.price.toStringAsFixed(2));
+    _stockController = TextEditingController(text: p.stock.toString());
+    _brandController = TextEditingController(text: p.brand ?? '');
+    _weightController = TextEditingController(
+      text: p.weightKg?.toString() ?? '',
     );
-    _priceController = TextEditingController(
-      text: widget.product.price.toString(),
-    );
-    _stockController = TextEditingController(text: "1"); // Default stock
-    _brandController = TextEditingController();
-    _weightController = TextEditingController();
-    _dimensionsController = TextEditingController();
+    _dimensionsController = TextEditingController(text: p.dimensions ?? '');
 
-    // Determine product type and set categories
-    _productType = _determineProductType(widget.product.name);
-    _categories = _categoryMap[_productType] ?? _categoryMap['Clothing']!;
-    _selectedCategory = widget.product.category.isNotEmpty
-        ? widget.product.category
-        : _categories.first;
+    _selectedCategory = p.category;
+    _selectedCondition = p.condition;
+    _isFeatured = p.isFeatured;
+    _isInStock = p.isInStock;
 
-    // Initialize with safe default values
-    _selectedWeather = _weatherOptions.contains(widget.product.weather)
-        ? widget.product.weather
-        : _weatherOptions.first;
-
-    _selectedTemp = _tempOptions.contains(widget.product.temp)
-        ? widget.product.temp
-        : _tempOptions.first;
-
-    _selectedEvent = _eventOptions.contains(widget.product.event)
-        ? widget.product.event
-        : _eventOptions.first;
-
-    // Initialize the first image if product has one
-    if (widget.product.image.isNotEmpty) {
-      if (widget.product.image.startsWith('assets/')) {
-        _selectedImages.add(widget.product.image); // Store asset path as is
+    // Initialize the first image if product has one (treat as network/local path)
+    if (p.image.isNotEmpty) {
+      if (p.image.startsWith('assets/')) {
+        _selectedImages.add(p.image);
       } else {
-        _selectedImages.add(
-          File(widget.product.image),
-        ); // Create File object for local files
+        // If it's a path on device we can wrap as File, otherwise keep as URL string
+        try {
+          _selectedImages.add(File(p.image));
+        } catch (_) {
+          _selectedImages.add(p.image);
+        }
       }
     }
   }
@@ -149,6 +79,139 @@ class _EditProductPageState extends State<EditProductPage> {
     super.dispose();
   }
 
+  String _categoryToString(ProductCategory c) {
+    switch (c) {
+      case ProductCategory.cozyWear:
+        return 'Cozy Wear';
+      case ProductCategory.footwear:
+        return 'Footwear';
+      case ProductCategory.formalWear:
+        return 'Formal Wear';
+      case ProductCategory.regularWear:
+        return 'Regular Wear';
+      case ProductCategory.unspecified:
+      default:
+        return 'Unspecified';
+    }
+  }
+
+  String _conditionToString(ProductCondition c) {
+    switch (c) {
+      case ProductCondition.newCondition:
+        return 'New';
+      case ProductCondition.used:
+        return 'Used';
+      case ProductCondition.refurbished:
+        return 'Refurbished';
+      default:
+        return 'New';
+    }
+  }
+
+  Future<void> _pickImages() async {
+    try {
+      final List<XFile>? images = await _picker.pickMultiImage();
+      if (images != null && images.isNotEmpty) {
+        setState(() {
+          for (var image in images) {
+            if (_selectedImages.length < 5) {
+              _selectedImages.add(File(image.path));
+            }
+          }
+        });
+      }
+    } catch (e) {
+      _showErrorSnackBar('Failed to pick images: $e');
+    }
+  }
+
+  void _removeImage(int index) {
+    setState(() {
+      _selectedImages.removeAt(index);
+    });
+  }
+
+  Future<void> _saveProduct() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    if (_selectedImages.isEmpty) {
+      _showErrorSnackBar('Please add at least one product image');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final parsedPrice =
+          double.tryParse(_priceController.text) ?? widget.product.price;
+      final parsedStock =
+          int.tryParse(_stockController.text) ?? widget.product.stock;
+      final parsedWeight = double.tryParse(_weightController.text);
+
+      final imagePath = _selectedImages.isNotEmpty
+          ? (_selectedImages.first is File
+                ? (_selectedImages.first as File).path
+                : _selectedImages.first as String)
+          : '';
+
+      final updatedProduct = Product(
+        id: widget.product.id,
+        authId: widget.product.authId,
+        name: _nameController.text.trim(),
+        description: _descriptionController.text.trim(),
+        category: _selectedCategory,
+        brand: _brandController.text.trim().isEmpty
+            ? null
+            : _brandController.text.trim(),
+        price: parsedPrice,
+        stock: parsedStock,
+        condition: _selectedCondition,
+        weightKg: parsedWeight,
+        dimensions: _dimensionsController.text.trim().isEmpty
+            ? null
+            : _dimensionsController.text.trim(),
+        isFeatured: _isFeatured,
+        isInStock: _isInStock,
+        createdAt: widget.product.createdAt,
+        updatedAt: DateTime.now(),
+        image: imagePath,
+        rating: widget.product.rating,
+        isLoved: widget.product.isLoved,
+      );
+
+      // TODO: call your API / backend here to persist the updated product
+      // For now, we'll simulate a delay and then pop with the updated product
+      await Future.delayed(const Duration(seconds: 1));
+
+      if (mounted) {
+        Navigator.pop(context, updatedProduct);
+        _showSuccessSnackBar('Product updated successfully!');
+      }
+    } catch (e) {
+      _showErrorSnackBar('Failed to update product: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
+
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.green),
+    );
+  }
+
   Widget _buildSectionTitle(String title) {
     return Text(
       title,
@@ -160,25 +223,13 @@ class _EditProductPageState extends State<EditProductPage> {
     );
   }
 
-  Widget _buildDropdown({
-    required String label,
-    required String value,
-    required List<String> items,
-    required ValueChanged<String?> onChanged,
-  }) {
-    // Ensure value exists in items, otherwise use first item
-    final safeValue = items.contains(value) ? value : items.first;
+  Widget _buildCategoryDropdown() {
+    final categories = ProductCategory.values
+        .where((c) => c != ProductCategory.unspecified)
+        .toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -187,15 +238,23 @@ class _EditProductPageState extends State<EditProductPage> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFFADFF2F)),
           ),
-          child: DropdownButton<String>(
-            value: safeValue,
-            onChanged: onChanged,
+          child: DropdownButton<ProductCategory>(
+            value: _selectedCategory,
+            onChanged: (v) {
+              if (v == null) return;
+              setState(() {
+                _selectedCategory = v;
+              });
+            },
             isExpanded: true,
             underline: const SizedBox(),
             dropdownColor: Colors.grey[800],
             style: const TextStyle(color: Colors.white),
-            items: items.map((String item) {
-              return DropdownMenuItem<String>(value: item, child: Text(item));
+            items: categories.map((c) {
+              return DropdownMenuItem<ProductCategory>(
+                value: c,
+                child: Text(_categoryToString(c)),
+              );
             }).toList(),
           ),
         ),
@@ -203,57 +262,40 @@ class _EditProductPageState extends State<EditProductPage> {
     );
   }
 
-  Widget _buildSwitchTile({
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[800],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: const Color.fromARGB(
-                      255,
-                      240,
-                      237,
-                      237,
-                    ).withOpacity(0.7),
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
+  Widget _buildConditionDropdown() {
+    final conditions = ProductCondition.values;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFADFF2F)),
           ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeColor: const Color(0xFFADFF2F),
-            activeTrackColor: const Color(0xFFADFF2F).withOpacity(0.3),
+          child: DropdownButton<ProductCondition>(
+            value: _selectedCondition,
+            onChanged: (v) {
+              if (v == null) return;
+              setState(() {
+                _selectedCondition = v;
+              });
+            },
+            isExpanded: true,
+            underline: const SizedBox(),
+            dropdownColor: Colors.grey[800],
+            style: const TextStyle(color: Colors.white),
+            items: conditions.map((c) {
+              return DropdownMenuItem<ProductCondition>(
+                value: c,
+                child: Text(_conditionToString(c)),
+              );
+            }).toList(),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -305,11 +347,7 @@ class _EditProductPageState extends State<EditProductPage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.cloud_upload_outlined,
-                        color: Color(0xff667eea),
-                        size: 48,
-                      ),
+                      Icon(Icons.cloud_upload_outlined, size: 48),
                       SizedBox(height: 16),
                       Text(
                         'Upload Product Images',
@@ -394,18 +432,11 @@ class _EditProductPageState extends State<EditProductPage> {
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            Icons.add_photo_alternate_outlined,
-                            color: Color(0xff667eea),
-                            size: 20,
-                          ),
+                          Icon(Icons.add_photo_alternate_outlined, size: 20),
                           SizedBox(width: 8),
                           Text(
                             'Add More Images',
-                            style: TextStyle(
-                              color: Color(0xff667eea),
-                              fontWeight: FontWeight.w600,
-                            ),
+                            style: TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
@@ -418,85 +449,53 @@ class _EditProductPageState extends State<EditProductPage> {
     );
   }
 
-  Future<void> _pickImages() async {
-    try {
-      final List<XFile> images = await _picker.pickMultiImage();
-      if (images.isNotEmpty) {
-        setState(() {
-          for (var image in images) {
-            if (_selectedImages.length < 5) {
-              _selectedImages.add(File(image.path));
-            }
-          }
-        });
-      }
-    } catch (e) {
-      _showErrorSnackBar('Failed to pick images: $e');
-    }
-  }
-
-  void _removeImage(int index) {
-    setState(() {
-      _selectedImages.removeAt(index);
-    });
-  }
-
-  Future<void> _saveProduct() async {
-    if (_formKey.currentState!.validate()) {
-      if (_selectedImages.isEmpty) {
-        _showErrorSnackBar('Please add at least one product image');
-        return;
-      }
-
-      // Prepare data for saving
-      Product updatedProduct = Product(
-        name: _nameController.text,
-        description: _descriptionController.text,
-        price: double.parse(_priceController.text),
-        category: _selectedCategory,
-        weather: _selectedWeather,
-        temp: _selectedTemp,
-        event: _selectedEvent,
-        image: _selectedImages.isNotEmpty
-            ? (_selectedImages.first is File
-                  ? (_selectedImages.first as File).path
-                  : _selectedImages.first as String)
-            : '',
-        rating: widget.product.rating, // Preserve the existing rating
-      );
-
-      setState(() {
-        _isLoading = true;
-      });
-
-      try {
-        // TODO: Implement the actual save functionality here
-        await Future.delayed(const Duration(seconds: 2)); // Simulate API call
-
-        // Pass the updated product back to the previous screen
-        Navigator.pop(context, updatedProduct);
-
-        _showSuccessSnackBar('Product updated successfully!');
-        Navigator.pop(context);
-      } catch (e) {
-        _showErrorSnackBar('Failed to update product: $e');
-      } finally {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
-
-  void _showErrorSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
-  }
-
-  void _showSuccessSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.green),
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    int maxLines = 1,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          maxLines: maxLines,
+          keyboardType: keyboardType,
+          validator: validator,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+            filled: true,
+            fillColor: Colors.black.withOpacity(0.3),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFADFF2F)),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Colors.red),
+            ),
+            contentPadding: const EdgeInsets.all(16),
+          ),
+        ),
+      ],
     );
   }
 
@@ -605,16 +604,15 @@ class _EditProductPageState extends State<EditProductPage> {
                 },
               ),
               const SizedBox(height: 16),
-              _buildDropdown(
-                label: 'Category',
-                value: _selectedCategory,
-                items: _categories,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCategory = value!;
-                  });
-                },
+              Text(
+                'Category',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+              _buildCategoryDropdown(),
               const SizedBox(height: 16),
               _buildTextField(
                 controller: _brandController,
@@ -666,16 +664,15 @@ class _EditProductPageState extends State<EditProductPage> {
                 ],
               ),
               const SizedBox(height: 16),
-              _buildDropdown(
-                label: 'Condition',
-                value: _selectedCondition,
-                items: _conditions,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCondition = value!;
-                  });
-                },
+              Text(
+                'Condition',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+              _buildConditionDropdown(),
               const SizedBox(height: 24),
 
               // Product Details
@@ -694,49 +691,6 @@ class _EditProductPageState extends State<EditProductPage> {
                 hint: 'e.g., 20 x 15 x 10',
               ),
               const SizedBox(height: 16),
-
-              // Weather and Event Options
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildDropdown(
-                      label: 'Weather',
-                      value: _selectedWeather,
-                      items: _weatherOptions,
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedWeather = value!;
-                        });
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _buildDropdown(
-                      label: 'Temperature',
-                      value: _selectedTemp,
-                      items: _tempOptions,
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedTemp = value!;
-                        });
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _buildDropdown(
-                label: 'Event Type',
-                value: _selectedEvent,
-                items: _eventOptions,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedEvent = value!;
-                  });
-                },
-              ),
-              const SizedBox(height: 24),
 
               // Settings
               _buildSectionTitle('Settings'),
@@ -808,53 +762,57 @@ class _EditProductPageState extends State<EditProductPage> {
     );
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    int maxLines = 1,
-    TextInputType? keyboardType,
-    String? Function(String?)? validator,
+  Widget _buildSwitchTile({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[800],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: const Color.fromARGB(
+                      255,
+                      240,
+                      237,
+                      237,
+                    ).withOpacity(0.7),
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: controller,
-          maxLines: maxLines,
-          keyboardType: keyboardType,
-          validator: validator,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-            filled: true,
-            fillColor: Colors.black.withOpacity(0.3),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFADFF2F)),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.red),
-            ),
-            contentPadding: const EdgeInsets.all(16),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: const Color(0xFFADFF2F),
+            activeTrackColor: const Color(0xFFADFF2F).withOpacity(0.3),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

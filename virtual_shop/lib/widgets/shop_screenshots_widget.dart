@@ -1,11 +1,13 @@
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:pro_image_editor/designs/frosted_glass/frosted_glass.dart';
+import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:virtual_shop/utils/image_search_service.dart';
-import '../pages/related_products_page.dart';
+
 import '../models/product.dart';
+import '../pages/related_products_page.dart';
 
 typedef OnImagePicked = void Function(Uint8List imageBytes);
 
@@ -21,52 +23,88 @@ class _ShopScreenshotsWidgetState extends State<ShopScreenshotsWidget> {
   List<Product> _dummyProducts() {
     return [
       Product(
+        id: 'screenshot_product_1',
+        authId: 'screenshot_seller_1',
         name: 'Winter Shearling Jacket',
-        image: 'assets/images/hoodie.jpg',
-        rating: 4.1,
-        price: 120.00,
-        category: 'Cozy Wear',
-        weather: 'Rainy',
-        temp: '16-22°C',
-        event: 'Promenade',
         description:
             'Elevate your winter wardrobe with this luxurious white shearling jacket, paired with a chic black turtleneck and matching skirt. Perfect for a stylish day out, this outfit combines comfort and high fashion, ensuring you stay warm and turn heads wherever you go.',
+        category: ProductCategory.cozyWear,
+        brand: 'Fashion Elite',
+        price: 120.00,
+        stock: 15,
+        condition: ProductCondition.newCondition,
+        weightKg: 0.8,
+        dimensions: '60x40x5 cm',
+        isFeatured: true,
+        isInStock: true,
+        createdAt: DateTime.now().subtract(const Duration(days: 10)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 1)),
+        image: 'assets/images/hoodie.jpg',
+        rating: 4.1,
+        isLoved: false,
       ),
       Product(
+        id: 'screenshot_product_2',
+        authId: 'screenshot_seller_2',
         name: 'Casual Chic Ensemble',
-        image: 'assets/images/hat1.jpg',
-        rating: 4.1,
-        price: 85.50,
-        category: 'Regular Wear',
-        weather: 'Neutral',
-        temp: '16-22°C',
-        event: 'Promenade',
         description:
             'Step out in style with this casual chic ensemble featuring a trendy hat.',
+        category: ProductCategory.regularWear,
+        brand: 'Urban Style',
+        price: 85.50,
+        stock: 25,
+        condition: ProductCondition.newCondition,
+        weightKg: 0.2,
+        dimensions: '30x30x15 cm',
+        isFeatured: false,
+        isInStock: true,
+        createdAt: DateTime.now().subtract(const Duration(days: 15)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 2)),
+        image: 'assets/images/hat1.jpg',
+        rating: 4.1,
+        isLoved: false,
       ),
       Product(
+        id: 'screenshot_product_3',
+        authId: 'screenshot_seller_3',
         name: 'Urban Explorer Outfit',
-        image: 'assets/images/shoe.jpg',
-        rating: 4.9,
-        price: 215.00,
-        category: 'Cozy Wear',
-        weather: 'Rainy',
-        temp: '16-22°C',
-        event: 'Promenade',
         description:
             'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
+        category: ProductCategory.footwear,
+        brand: 'Adventure Gear',
+        price: 215.00,
+        stock: 8,
+        condition: ProductCondition.newCondition,
+        weightKg: 1.2,
+        dimensions: '35x25x15 cm',
+        isFeatured: true,
+        isInStock: true,
+        createdAt: DateTime.now().subtract(const Duration(days: 5)),
+        updatedAt: DateTime.now().subtract(const Duration(hours: 12)),
+        image: 'assets/images/shoe.jpg',
+        rating: 4.9,
+        isLoved: false,
       ),
       Product(
+        id: 'screenshot_product_4',
+        authId: 'screenshot_seller_4',
         name: 'Classic glasses',
-        image: 'assets/images/glass1.jpg',
-        rating: 4.9,
-        price: 215.00,
-        category: 'Cozy Wear',
-        weather: 'Rainy',
-        temp: '16-22°C',
-        event: 'Promenade',
         description:
             'Elevate your style with these classic glasses, perfect for any occasion. Their timeless design and high-quality material make them a must-have accessory for those who appreciate both fashion and functionality.',
+        category: ProductCategory.regularWear,
+        brand: 'Vision Pro',
+        price: 215.00,
+        stock: 12,
+        condition: ProductCondition.newCondition,
+        weightKg: 0.05,
+        dimensions: '15x5x2 cm',
+        isFeatured: false,
+        isInStock: true,
+        createdAt: DateTime.now().subtract(const Duration(days: 20)),
+        updatedAt: DateTime.now().subtract(const Duration(days: 3)),
+        image: 'assets/images/glass1.jpg',
+        rating: 4.9,
+        isLoved: false,
       ),
     ];
   }

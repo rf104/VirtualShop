@@ -7,6 +7,7 @@ import tempfile
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi import Header
 from fastapi.middleware.cors import CORSMiddleware
+from server.seller import router as seller_router
 from PIL import Image
 from sentence_transformers import SentenceTransformer
 import numpy as np
@@ -31,6 +32,7 @@ app.add_middleware(
 )
 
 
+
 class Models:
     clip: Optional[SentenceTransformer] = None
 
@@ -46,6 +48,9 @@ def _startup() -> None:
     # Lazy load CLIP on first use; here we just assign placeholder
     Models.clip = None
 
+
+# Register seller routes
+app.include_router(seller_router)
 
 @app.get("/")
 def read_root():
@@ -80,7 +85,7 @@ def list_products():
     # Note: PostgREST doesn't do arbitrary joins; we rely on a view or nested select
     # Here we select products and then fetch first image per product in a second query
     prod_res = client.table("products").select(
-        "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock").execute()
+        "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating").execute()
     if getattr(prod_res, "error", None):
         raise HTTPException(status_code=400, detail=str(prod_res.error))
     prods = prod_res.data or []
@@ -232,7 +237,7 @@ def search_products(q: str, limit: int = 24):
         return {"results": []}
 
     prod_res = client.table("products").select(
-        "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at"
+        "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
     ).in_("id", top_ids).execute()
     if getattr(prod_res, "error", None):
         raise HTTPException(status_code=400, detail=str(prod_res.error))
@@ -828,7 +833,7 @@ def related_products(product_id: str, limit: int = 6):
 
     # 4) Fetch product rows in a single query
     prod_res = client.table("products").select(
-        "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at"
+        "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
     ).in_("id", top_ids).execute()
     if getattr(prod_res, "error", None):
         raise HTTPException(status_code=400, detail=str(prod_res.error))

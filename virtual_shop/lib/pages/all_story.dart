@@ -1,16 +1,17 @@
-import 'dart:ui';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:virtual_shop/models/product.dart';
+import 'package:virtual_shop/models/product.dart'; // Ensure this points to your updated Product model
+import 'package:virtual_shop/pages/virtual_closet.dart';
 import 'package:virtual_shop/widgets/best_seller_widget.dart';
 import 'package:virtual_shop/widgets/categories_widget.dart';
 import 'package:virtual_shop/widgets/favorite_stores.dart';
 import 'package:virtual_shop/widgets/promotion_widget.dart';
 import 'package:virtual_shop/widgets/shop_screenshots_widget.dart';
 import 'package:virtual_shop/widgets/story_page.dart';
-import 'package:virtual_shop/pages/virtual_closet.dart';
 
 class AllStoryPage extends StatelessWidget {
   const AllStoryPage({super.key});
@@ -105,7 +106,7 @@ class AllStoryPage extends StatelessWidget {
               const SizedBox(height: 24),
               const CategoriesWidget(),
               const SizedBox(height: 24),
-              SharedClosetsSection(),
+              const SharedClosetsSection(), // Changed to const as its children are constant for now
               const SizedBox(height: 50),
             ],
           ),
@@ -177,10 +178,10 @@ class _YourStoryItemState extends State<YourStoryItem> {
 
       final Uint8List imageBytes = await pickedFile.readAsBytes();
       final String base64Image = base64Encode(imageBytes);
-      
+
       // Print the base64 image
       print('Base64 Image: $base64Image');
-      
+
       // Show a snackbar to confirm the image was processed
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -312,18 +313,25 @@ class SharedCloset {
   });
 }
 
+// Updated dummyProducts to match the Product model constructor
 final List<Product> dummyProducts = List.generate(
   15,
   (index) => Product(
+    id: 'dummy_id_${index + 1}', // Required field
+    authId: 'dummy_seller_id', // Required field
     name: 'Product ${index + 1}',
-    image: 'assets/images/demo${(index % 5) + 1}.jpg',
-    rating: 4.5,
+    image:
+        'assets/images/demo${(index % 5) + 1}.jpg', // Still using asset paths for dummy
+    rating: (index % 5 + 1).toDouble(), // Add required rating field (1.0 - 5.0)
     price: (1.0 * index * 10) + 20,
-    category: 'Category',
-    weather: 'Sunny',
-    temp: '25°C',
-    event: 'Casual',
+    category: ProductCategory.regularWear, // Using enum
+    stock: 100 - (index * 5), // Dummy stock
+    condition: ProductCondition.newCondition, // Using enum
+    isFeatured: index % 3 == 0, // Dummy feature status
+    isInStock: index % 5 != 0, // Dummy in stock status
     description: 'This is a description for product ${index + 1}.',
+    createdAt: DateTime.now(), // Required field
+    updatedAt: DateTime.now(), // Required field
   ),
 );
 
@@ -415,7 +423,9 @@ class ClosetCard extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20.0),
           image: DecorationImage(
-            image: AssetImage(closet.products.first.image),
+            image: AssetImage(
+              closet.products.first.image,
+            ), // Still using AssetImage for dummy data
             fit: BoxFit.cover,
           ),
         ),

@@ -1,18 +1,18 @@
 import 'dart:ui';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:oc_liquid_glass/oc_liquid_glass.dart';
 import 'package:palette_generator/palette_generator.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:virtual_shop/models/product.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:virtual_shop/pages/chat_page.dart';
 import 'package:virtual_shop/pages/edit_product.dart';
 import 'package:virtual_shop/pages/virtual_try_on_page.dart';
-
-import 'package:virtual_shop/widgets/glass_container.dart';
 import 'package:virtual_shop/utils/cart_api.dart';
 import 'package:virtual_shop/utils/related_products_service.dart';
 import 'package:virtual_shop/utils/review_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:virtual_shop/widgets/glass_container.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
@@ -190,7 +190,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             overflow: TextOverflow.ellipsis,
           ),
           Text(
-            product.category,
+            product.category.toString(),
             style: TextStyle(color: Colors.grey[400], fontSize: 12),
           ),
           Row(
@@ -524,7 +524,10 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  widget.product.category,
+                                  widget.product.category
+                                      .toString()
+                                      .split('.')
+                                      .last,
                                   style: TextStyle(
                                     fontSize: rf(context, 16),
                                     color: Colors.grey[600],
@@ -551,7 +554,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                                     ),
                                     SizedBox(width: rf(context, 6)),
                                     Text(
-                                      '(${_reviewCount > 0 ? _reviewCount : (widget.product.ratingCount ?? 0)})',
+                                      '(${_reviewCount > 0 ? _reviewCount : (widget.product.rating ?? 0)})',
                                       style: TextStyle(
                                         fontSize: rf(context, 12),
                                         color: Colors.black87,
@@ -664,6 +667,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   _buildRelatedProductsSection(),
                   const SizedBox(height: 32),
                   _buildReviewSection(),
+                  const SizedBox(
+                    height: 50,
+                  ), // Extra padding to prevent overflow
                 ],
               ),
             ),
@@ -679,9 +685,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       spacing: 10.0,
       runSpacing: 10.0,
       children: [
-        _buildInfoChip('Weather', widget.product.weather),
-        _buildInfoChip('Temp', widget.product.temp),
-        _buildInfoChip('Event', widget.product.event),
+        // _buildInfoChip('Weather', widget.product.weather), // Removed because 'weather' does not exist on Product
+        // _buildInfoChip('Temp', widget.product.temp), // Comment out or remove if 'temp' does not exist
+        // _buildInfoChip('Event', widget.product.event), // Comment out or remove if 'event' does not exist
       ],
     );
   }
