@@ -3,6 +3,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/widgets/best_seller_widget.dart';
 import 'package:virtual_shop/widgets/categories_widget.dart';
@@ -12,20 +17,65 @@ import 'package:virtual_shop/widgets/shop_screenshots_widget.dart';
 import 'package:virtual_shop/widgets/story_page.dart';
 import 'package:virtual_shop/pages/virtual_closet.dart';
 
-class AllStoryPage extends StatelessWidget {
+class StoriesRepository {
+  static String get _baseUrl {
+    final fromServer = dotenv.env['SERVER_URL']?.trim();
+    final fromBackend = dotenv.env['BACKEND_URL']?.trim();
+    String raw = (fromServer?.isNotEmpty == true)
+        ? fromServer!
+        : (fromBackend?.isNotEmpty == true
+              ? fromBackend!
+              : 'http://127.0.0.1:8000');
+    raw = raw.replaceFirst(RegExp(r'^(https?://)\s+'), r'$1');
+    String url = raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
+    try {
+      // Match ProductRepository behavior for Android emulators/devices
+      if (!kIsWeb && Platform.isAndroid) {
+        final uri = Uri.parse(url);
+        if (uri.host == '127.0.0.1' || uri.host == 'localhost') {
+          url = uri
+              .replace(host: dotenv.env['hostIp'] ?? '192.168.0.154')
+              .toString();
+        }
+      }
+    } catch (_) {}
+    return url;
+  }
+
+  static Uri _uri(String path) => Uri.parse('$_baseUrl$path');
+
+  static Future<List<Map<String, dynamic>>> fetchStories({
+    int limit = 50,
+  }) async {
+    final resp = await http.get(_uri('/stories?limit=$limit'));
+    if (resp.statusCode != 200) {
+      throw Exception(
+        'Failed to fetch stories: ${resp.statusCode} ${resp.body}',
+      );
+    }
+    final List<dynamic> arr = jsonDecode(resp.body) as List<dynamic>;
+    return arr.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+}
+
+class AllStoryPage extends StatefulWidget {
   const AllStoryPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final List<Map<String, String>> stories = [
-      {'image': 'assets/images/profile.jpg', 'username': '@Aref'},
-      {'image': 'assets/images/profile3.jpg', 'username': '@Arik'},
-      {'image': 'assets/images/profile4.jpg', 'username': '@rahad'},
-      {'image': 'assets/images/profile6.jpg', 'username': '@raisul'},
-      {'image': 'assets/images/demo1.jpg', 'username': '@ahmed'},
-      {'image': 'assets/images/demo5.jpg', 'username': '@hossain'},
-    ];
+  State<AllStoryPage> createState() => _AllStoryPageState();
+}
 
+class _AllStoryPageState extends State<AllStoryPage> {
+  late Future<List<Map<String, dynamic>>> _storiesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _storiesFuture = StoriesRepository.fetchStories();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -58,37 +108,49 @@ class AllStoryPage extends StatelessWidget {
               ),
               SizedBox(
                 height: 110,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: stories.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index == 0) {
-                      return GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const Story(),
+                child: FutureBuilder<List<Map<String, dynamic>>>(
+                  future: _storiesFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Row(
+                        children: const [
+                          Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: Icon(Icons.error, color: Colors.redAccent),
+                          ),
+                          Expanded(
+                            child: Text(
+                              'Failed to load stories',
+                              style: TextStyle(color: Colors.white70),
                             ),
-                          );
-                        },
-                        child: const Padding(
-                          padding: EdgeInsets.only(right: 10.0),
-                          child: YourStoryItem(),
-                        ),
+                          ),
+                        ],
                       );
                     }
-                    final story = stories[index - 1];
-                    return GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const Story(),
-                          ),
-                        );
+                    final data = snapshot.data ?? const [];
+                    return ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: data.length + 1,
+                      itemBuilder: (context, index) {
+                        if (index == 0) {
+                          return Padding(
+                            padding: EdgeInsets.only(right: 10.0),
+                            child: YourStoryItem(
+                              onUploaded: () {
+                                setState(() {
+                                  _storiesFuture =
+                                      StoriesRepository.fetchStories();
+                                });
+                              },
+                            ),
+                          );
+                        }
+                        final story = data[index - 1];
+                        return StoryItemNet(story: story);
                       },
-                      child: StoryItem(story: story),
                     );
                   },
                 ),
@@ -113,6 +175,88 @@ class AllStoryPage extends StatelessWidget {
       ),
     );
   }
+}
+
+class StoryItemNet extends StatelessWidget {
+  final Map<String, dynamic> story;
+  const StoryItemNet({super.key, required this.story});
+
+  @override
+  Widget build(BuildContext context) {
+    final avatar = (story['user_avatar'] as String?)?.trim();
+    final name = (story['user_name'] as String?)?.trim();
+    final display = (name == null || name.isEmpty)
+        ? '@user'
+        : '@${name.replaceAll(' ', '')}';
+    final isNet =
+        avatar != null &&
+        (avatar.startsWith('http://') || avatar.startsWith('https://'));
+    Widget avatarWidget;
+    if (isNet) {
+      final headers = _headersForUrl(avatar);
+      avatarWidget = ClipOval(
+        child: Image.network(
+          avatar,
+          width: 64,
+          height: 64,
+          fit: BoxFit.cover,
+          headers: headers,
+          errorBuilder: (context, error, stackTrace) => const CircleAvatar(
+            backgroundImage: AssetImage('assets/images/profile2.jpg'),
+          ),
+        ),
+      );
+    } else {
+      avatarWidget = const CircleAvatar(
+        backgroundImage: AssetImage('assets/images/profile2.jpg'),
+      );
+    }
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const Story()),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(right: 10.0),
+        child: Column(
+          children: [
+            Container(
+              width: 70,
+              height: 70,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.grey, width: 2),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(3.0),
+                child: avatarWidget,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: 72,
+              child: Text(
+                display,
+                style: const TextStyle(fontSize: 12, color: Colors.white),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Map<String, String>? _headersForUrl(String url) {
+  final session = Supabase.instance.client.auth.currentSession;
+  if (session == null) return null;
+  if (url.contains('supabase.co') && url.contains('/storage/v1/object/')) {
+    return {'Authorization': 'Bearer ${session.accessToken}'};
+  }
+  return null;
 }
 
 class StoryItem extends StatelessWidget {
@@ -161,7 +305,8 @@ class StoryItem extends StatelessWidget {
 }
 
 class YourStoryItem extends StatefulWidget {
-  const YourStoryItem({super.key});
+  final VoidCallback onUploaded;
+  const YourStoryItem({super.key, required this.onUploaded});
 
   @override
   State<YourStoryItem> createState() => _YourStoryItemState();
@@ -176,19 +321,43 @@ class _YourStoryItemState extends State<YourStoryItem> {
       if (pickedFile == null) return;
 
       final Uint8List imageBytes = await pickedFile.readAsBytes();
-      final String base64Image = base64Encode(imageBytes);
-      
-      // Print the base64 image
-      print('Base64 Image: $base64Image');
-      
-      // Show a snackbar to confirm the image was processed
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Image processed and base64 printed to console'),
-            duration: Duration(seconds: 2),
-          ),
-        );
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please sign in to add a story')),
+          );
+        }
+        return;
+      }
+
+      final uri = StoriesRepository._uri('/stories');
+      final req = http.MultipartRequest('POST', uri);
+      req.headers['Authorization'] = 'Bearer ${session.accessToken}';
+      req.fields['caption'] = '';
+      req.fields['expires_in_hours'] = '24';
+      req.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          imageBytes,
+          filename: pickedFile.name,
+        ),
+      );
+      final streamed = await req.send();
+      final resp = await http.Response.fromStream(streamed);
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Story uploaded')));
+        }
+        widget.onUploaded();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Upload failed: ${resp.statusCode}')),
+          );
+        }
       }
     } catch (e) {
       print('Error picking image: $e');
@@ -283,7 +452,11 @@ class _YourStoryItemState extends State<YourStoryItem> {
                         color: Colors.blue,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.add, color: Colors.white, size: 16),
+                      child: const Icon(
+                        Icons.add,
+                        color: Colors.white,
+                        size: 16,
+                      ),
                     ),
                   ),
                 ),
@@ -291,7 +464,10 @@ class _YourStoryItemState extends State<YourStoryItem> {
             ),
           ),
           const SizedBox(height: 8),
-          const Text('You', style: TextStyle(fontSize: 12, color: Colors.white)),
+          const Text(
+            'You',
+            style: TextStyle(fontSize: 12, color: Colors.white),
+          ),
         ],
       ),
     );

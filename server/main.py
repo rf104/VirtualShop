@@ -3,6 +3,7 @@ import io
 import uuid
 import os
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi import Header
@@ -96,6 +97,60 @@ def list_products():
             obj["image_url"] = image_url
         out.append(obj)
     return out
+
+
+@app.get("/products/by_ids")
+def get_products_by_ids(ids: str):
+    """Return multiple products by id, with first image_url, preserving given order when possible."""
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    raw = [x.strip() for x in (ids or "").split(",") if x.strip()]
+    if not raw:
+        return []
+    res = client.table("products").select(
+        "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at"
+    ).in_("id", raw).execute()
+    if getattr(res, "error", None):
+        raise HTTPException(status_code=400, detail=str(res.error))
+    prods = res.data or []
+    by_id = {str(p["id"]): dict(p) for p in prods}
+    # Fetch first image per product in one go
+    img_res = client.table("product_images").select("product_id,image_url").in_(
+        "product_id", list(by_id.keys())).order("created_at", desc=False).execute()
+    if not getattr(img_res, "error", None):
+        # Keep first seen per product
+        seen = set()
+        for row in (img_res.data or []):
+            pid = str(row.get("product_id"))
+            if pid in by_id and pid not in seen:
+                by_id[pid]["image_url"] = row.get("image_url")
+                seen.add(pid)
+    # Preserve input order
+    out = [by_id[i] for i in raw if i in by_id]
+    return out
+
+
+@app.get("/products/{product_id}")
+def get_product(product_id: str):
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    res = client.table("products").select(
+        "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at"
+    ).eq("id", product_id).limit(1).execute()
+    if getattr(res, "error", None):
+        raise HTTPException(status_code=400, detail=str(res.error))
+    rows = res.data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Product not found")
+    p = rows[0]
+    img_res = client.table("product_images").select("image_url").eq(
+        "product_id", product_id).order("created_at", desc=False).limit(1).execute()
+    if not getattr(img_res, "error", None) and img_res.data:
+        p = dict(p)
+        p["image_url"] = img_res.data[0].get("image_url")
+    return p
 
 
 def _get_clip() -> SentenceTransformer:
@@ -633,6 +688,191 @@ def suggest_tokens(q: str):
     if taste_opts:
         facet_list.append({"title": "taste", "options": taste_opts})
     return {"primary": category, "facets": facet_list}
+
+
+# ---------------------- STORIES API ----------------------
+
+@app.get("/stories")
+def list_stories(limit: int = 50):
+    """List recent stories (most recent first), enriched with user profile info.
+
+    Returns an array of story objects with shape:
+      {
+        id, user_auth_id, product_id, media_url, caption, created_at, expires_at,
+        user: { name, profile_image },
+        user_name, user_avatar
+      }
+    """
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    # Fetch recent stories; we don't filter by expires_at to avoid server-side timestamp formatting issues.
+    # Client/UI can ignore expired if necessary; most importantly, we provide a stable feed.
+    q = client.table("stories").select(
+        "id,user_auth_id,product_id,media_url,caption,created_at,expires_at"
+    ).order("created_at", desc=True).limit(max(1, int(limit)))
+    res = q.execute()
+    if getattr(res, "error", None):
+        raise HTTPException(status_code=400, detail=str(res.error))
+    rows = res.data or []
+
+    # Enrich with public.users info (by auth_id)
+    auth_ids = list({r.get("user_auth_id")
+                    for r in rows if r.get("user_auth_id")})
+    by_auth: dict[str, dict] = {}
+    if auth_ids:
+        prof = client.table("users").select(
+            "auth_id,name,profile_image").in_("auth_id", auth_ids).execute()
+        if not getattr(prof, "error", None):
+            for u in (prof.data or []):
+                aid = u.get("auth_id")
+                if aid:
+                    by_auth[str(aid)] = {
+                        "name": u.get("name") or "",
+                        "profile_image": u.get("profile_image") or "",
+                    }
+
+    out = []
+    for r in rows:
+        uinfo = by_auth.get(str(r.get("user_auth_id")) or "", {})
+        obj = dict(r)
+        obj["user"] = uinfo
+        # Convenience fields for clients that expect name/avatar at top level
+        obj["user_name"] = uinfo.get(
+            "name") if isinstance(uinfo, dict) else None
+        obj["user_avatar"] = uinfo.get(
+            "profile_image") if isinstance(uinfo, dict) else None
+        out.append(obj)
+
+    return out
+
+
+@app.post("/stories")
+async def create_story(
+    authorization: str | None = Header(default=None),
+    file: UploadFile = File(...),
+    caption: Optional[str] = Form(None),
+    product_id: Optional[str] = Form(None),
+    expires_in_hours: int = Form(24),
+):
+    """Create a story for the authenticated user by uploading an image.
+
+    Multipart form fields:
+      - file: image file (required)
+      - caption: optional text
+      - product_id: optional associated product id
+      - expires_in_hours: optional TTL (default 24)
+    """
+    # Require auth
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    # Ensure storage bucket exists
+    bucket = os.getenv("STORIES_BUCKET", "stories")
+    try:
+        app.state.supabase.storage.create_bucket(
+            bucket, options={"public": True})
+    except Exception:
+        # Already exists -> ignore
+        pass
+
+    # Read file
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file upload")
+
+    # Generate key under user namespace
+    ext = (file.filename.split(".")
+           [-1] if file.filename and "." in file.filename else "jpg").lower()
+    key = f"{user_id}/{uuid.uuid4()}.{ext}"
+
+    # Upload using temp file path
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+            tmp.write(content)
+            tmp.flush()
+            tmp_path = tmp.name
+        app.state.supabase.storage.from_(bucket).upload(
+            file=tmp_path,
+            path=key,
+            file_options={
+                "content-type": file.content_type or "image/jpeg",
+                "upsert": False,
+            },
+        )
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+    # Public URL (works regardless; for private bucket this returns signed-style path requiring Authorization)
+    url_resp = app.state.supabase.storage.from_(bucket).get_public_url(key)
+    if isinstance(url_resp, str):
+        media_url = url_resp
+    elif isinstance(url_resp, dict):
+        media_url = url_resp.get("publicUrl") or url_resp.get(
+            "public_url") or url_resp.get("url")
+    else:
+        media_url = str(url_resp)
+
+    # Insert into stories
+    try:
+        hours = int(expires_in_hours)
+    except Exception:
+        hours = 24
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=max(1, hours))
+
+    row = {
+        "user_auth_id": user_id,
+        "product_id": product_id,
+        "media_url": media_url,
+        "caption": (caption or "").strip(),
+        "expires_at": expires_at.isoformat(),
+    }
+    ins = client.table("stories").insert(row).execute()
+    if getattr(ins, "error", None):
+        raise HTTPException(status_code=400, detail=str(ins.error))
+    data = ins.data
+    if isinstance(data, list) and data:
+        created = data[0]
+    elif isinstance(data, dict):
+        created = data
+    else:
+        created = {"media_url": media_url}
+
+    # Enrich with user info to match GET /stories shape
+    try:
+        prof = client.table("users").select("auth_id,name,profile_image").eq(
+            "auth_id", user_id).limit(1).execute()
+        user = {}
+        if not getattr(prof, "error", None) and prof.data:
+            u = prof.data[0]
+            user = {"name": u.get("name") or "", "profile_image": u.get(
+                "profile_image") or ""}
+        created = dict(created)
+        created["user"] = user
+        created["user_name"] = user.get(
+            "name") if isinstance(user, dict) else None
+        created["user_avatar"] = user.get(
+            "profile_image") if isinstance(user, dict) else None
+    except Exception:
+        pass
+
+    return created
 
 
 @app.post("/image-search/search")
