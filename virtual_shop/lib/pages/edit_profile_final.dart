@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'package:virtual_shop/utils/userProfile_api.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class EditProfileFinal extends StatefulWidget {
   const EditProfileFinal({super.key});
@@ -13,21 +17,57 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
   final _formKey = GlobalKey<FormState>();
   final ImagePicker _picker = ImagePicker();
   File? _selectedImage;
-  final TextEditingController _nameController = TextEditingController(
-    text: 'Alice Eve',
-  );
-  final TextEditingController _emailController = TextEditingController(
-    text: 'aliceeve@gmail.com',
-  );
-  final TextEditingController _phoneController = TextEditingController(
-    text: '+8801305030143',
-  );
-  final TextEditingController _dobController = TextEditingController(
-    text: '1995-06-15',
-  );
-  final TextEditingController _addressController = TextEditingController(
-    text: '123 Main St, City',
-  );
+  bool _loading = true;
+  String? _profileImageUrl;
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _dobController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
+
+  // No hardcoded user id; we use Supabase auth token to fetch the current user's profile
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserFromDb();
+  }
+
+  Future<void> _loadUserFromDb() async {
+    try {
+      final token = Supabase.instance.client.auth.currentSession?.accessToken;
+      if (token == null || token.isEmpty) {
+        throw Exception('Not signed in');
+      }
+      final uri = Uri.parse('${ApiService.baseUrl}/profile/self');
+      final res = await http.get(uri, headers: {
+        'Authorization': 'Bearer $token',
+      });
+      if (res.statusCode != 200) {
+        throw Exception('Failed to load: ${res.statusCode} ${res.body}');
+      }
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      _nameController.text = (data['name'] ?? '').toString();
+      _emailController.text = (data['email'] ?? '').toString();
+      _phoneController.text = (data['phone'] ?? '').toString();
+      final dob = data['dob'];
+      if (dob != null && dob.toString().isNotEmpty) {
+        final s = dob.toString();
+        _dobController.text = s.contains('T') ? s.split('T').first : s.split(' ').first;
+      }
+      _addressController.text = (data['address'] ?? '').toString();
+      final img = (data['profile_image'] ?? data['profileImage'] ?? '').toString();
+      _profileImageUrl = img.isNotEmpty ? img : null;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load profile: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -81,9 +121,9 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                           image: DecorationImage(
                             image: _selectedImage != null
                                 ? FileImage(_selectedImage!) as ImageProvider
-                                : const AssetImage(
-                                    'assets/images/profile2.jpg',
-                                  ),
+                                : (_profileImageUrl != null
+                                    ? NetworkImage(_profileImageUrl!) as ImageProvider
+                                    : const AssetImage('assets/images/profile2.jpg')),
                             fit: BoxFit.cover,
                           ),
                         ),
@@ -139,6 +179,11 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                     ],
                   ),
                   const SizedBox(height: 20),
+                  if (_loading)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8.0),
+                      child: CircularProgressIndicator(),
+                    ),
 
                   // Name Field
                   _buildTextField(
@@ -308,18 +353,36 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                             ],
                           ),
                           child: ElevatedButton(
-                            onPressed: () {
-                              if (_formKey.currentState!.validate()) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Profile Updated Successfully',
-                                    ),
-                                  ),
-                                );
-                                Navigator.pop(context);
-                              }
-                            },
+                            onPressed: _loading
+                                ? null
+                                : () async {
+                                    if (!_formKey.currentState!.validate()) return;
+                                    setState(() => _loading = true);
+                                    try {
+                                      await ApiService.updateSelf(
+                                        name: _nameController.text.trim(),
+                                        email: _emailController.text.trim(),
+                                        phone: _phoneController.text.trim(),
+                                        // dob: _dobController.text.trim(),
+                                        // address: _addressController.text.trim(),
+                                        // image: _selectedImage,
+                                      );
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Profile Updated Successfully')),
+                                        );
+                                        Navigator.pop(context, true);
+                                      }
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Update failed: ${e.toString()}')),
+                                        );
+                                      }
+                                    } finally {
+                                      if (mounted) setState(() => _loading = false);
+                                    }
+                                  },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.transparent,
                               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -328,14 +391,20 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: const Text(
-                              'Save',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
+                            child: _loading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Text(
+                                    'Save',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                           ),
                         ),
                       ),
@@ -350,63 +419,7 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
     );
   }
 
-  Widget _buildDropdownField({
-    required String label,
-    required IconData icon,
-    required String value,
-    required List<String> items,
-    required Function(String?) onChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: const Color(0xFFADFF2F).withOpacity(0.5),
-              width: 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(left: 16),
-                child: Icon(icon, color: const Color(0xFFADFF2F)),
-              ),
-              Expanded(
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: value,
-                    dropdownColor: Colors.black.withOpacity(0.9),
-                    style: const TextStyle(color: Colors.white),
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    items: items.map((String item) {
-                      return DropdownMenuItem<String>(
-                        value: item,
-                        child: Text(item),
-                      );
-                    }).toList(),
-                    onChanged: onChanged,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
+  // Removed unused dropdown helper to keep the file minimal
 
   Widget _buildTextField({
     required TextEditingController controller,

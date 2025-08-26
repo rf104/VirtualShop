@@ -1008,3 +1008,88 @@ async def create_product(
         "images": inserted_images,
         "text_embedding_dim": len(text_embedding),
     }
+
+## user profile test endpoint
+@app.get('/userprofile')
+def test():
+    return {"message": "User Profile Service is up and running."}
+
+
+## all user profiles
+@app.get("/users")
+def get_users():
+    """
+    Fetch all users from Supabase 'users' table.
+    """
+    # Get supabase client from app state
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    # Fetch all users
+    try:
+        user_res = client.table("users").select("*").execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Supabase query failed: {str(e)}")
+
+    # Check for query errors
+    if getattr(user_res, "error", None):
+        raise HTTPException(status_code=400, detail=str(user_res.error))
+
+    # Extract user data
+    users = user_res.data or []
+    return users
+
+## All sellers profile 
+@app.get("/sellers")
+def get_sellers():
+    """
+    Fetch all sellers from Supabase 'users' table.
+    Only returns rows where user_type = 'Seller'.
+    """
+    # Get supabase client
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        seller_res = (
+            client.table("users")
+            .select("*")
+            .eq("user_type", "Seller")
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Supabase query failed: {str(e)}")
+
+    if getattr(seller_res, "error", None):
+        raise HTTPException(status_code=400, detail=str(seller_res.error))
+
+    sellers = seller_res.data or []
+    return sellers
+
+@app.get("/users/{user_id}")
+def get_user_profile(user_id: int):
+    """
+    Fetch all info of a specific user by user_id from Supabase 'users' table.
+    """
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        user_res = (
+            client.table("users")
+            .select("*")
+            .eq("user_id", user_id)   # filter by user_id
+            .single()            # expect exactly one row
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Supabase query failed: {str(e)}")
+
+    if getattr(user_res, "error", None):
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return user_res.data
+
