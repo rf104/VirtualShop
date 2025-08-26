@@ -50,20 +50,20 @@ class Product {
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
-    double _toDouble(dynamic v, [double def = 0]) {
+    double toDouble(dynamic v, [double def = 0]) {
       if (v == null) return def;
       if (v is num) return v.toDouble();
       return double.tryParse(v.toString()) ?? def;
     }
 
-    int? _toInt(dynamic v) {
+    int? toInt(dynamic v) {
       if (v == null) return null;
       if (v is int) return v;
       if (v is num) return v.toInt();
       return int.tryParse(v.toString());
     }
 
-    DateTime? _toDate(dynamic v) {
+    DateTime? toDate(dynamic v) {
       if (v == null) return null;
       try {
         return DateTime.parse(v.toString());
@@ -72,7 +72,7 @@ class Product {
       }
     }
 
-    List<String> _extractImages(Map<String, dynamic> map) {
+    List<String> extractImages(Map<String, dynamic> map) {
       final dynamic imgsDyn = map['images'] ?? map['product_images'];
       if (imgsDyn is List) {
         // Could be a list of urls or list of objects with image_url
@@ -90,14 +90,14 @@ class Product {
       return const [];
     }
 
-    String _pickImage(Map<String, dynamic> map) {
+    String pickImage(Map<String, dynamic> map) {
       // Prefer explicit primary fields
       final img = map['image_url'] ?? map['image'] ?? map['thumbnail'] ?? '';
       if (img != null && img.toString().isNotEmpty) {
         return img.toString();
       }
       // Or derive from images array
-      final imgs = _extractImages(map);
+      final imgs = extractImages(map);
       if (imgs.isNotEmpty) return imgs.first;
       return '';
     }
@@ -108,30 +108,29 @@ class Product {
           json['name']?.toString() ??
           json['product_name']?.toString() ??
           'Product',
-      image: _pickImage(json),
-      images: _extractImages(json),
-      rating: _toDouble(
+      image: pickImage(json),
+      images: extractImages(json),
+      rating: toDouble(
         json['rating'] ?? json['avg_rating'] ?? json['rating_avg'],
         0,
       ),
-      ratingCount: _toInt(
+      ratingCount: toInt(
         json['rating_count'] ?? json['reviews_count'] ?? json['count_reviews'],
       ),
-      price: _toDouble(json['price'], 0),
+      price: toDouble(json['price'], 0),
       category: json['category']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
       brand: json['brand']?.toString(),
-      stock: _toInt(json['stock']),
+      stock: toInt(json['stock']),
       condition: json['condition']?.toString(),
-      weightKg:
-          _toDouble(json['weight_kg'], 0) == 0 && json['weight_kg'] == null
+      weightKg: toDouble(json['weight_kg'], 0) == 0 && json['weight_kg'] == null
           ? null
-          : _toDouble(json['weight_kg']),
+          : toDouble(json['weight_kg']),
       dimensions: json['dimensions']?.toString(),
       isFeatured: json['is_featured'] as bool?,
       isInStock: json['is_in_stock'] as bool?,
-      createdAt: _toDate(json['created_at']),
-      updatedAt: _toDate(json['updated_at']),
+      createdAt: toDate(json['created_at']),
+      updatedAt: toDate(json['updated_at']),
       // Optional UX extras if backend ever provides them
       weather: json['weather']?.toString() ?? '',
       temp: json['temp']?.toString() ?? '',
