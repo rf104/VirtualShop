@@ -3,7 +3,7 @@ import 'dart:convert';
 import '../models/seller.dart';
 
 class ApiService {
-  static const String baseUrl = "http://192.168.0.102:8000";
+  static const String baseUrl = "http://10.103.130.156:8000";
 
   // Fetch all sellers
   static Future<List<Seller>> getAllSellers() async {
