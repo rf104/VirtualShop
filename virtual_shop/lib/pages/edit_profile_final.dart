@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:virtual_shop/utils/userProfile_api.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 class EditProfileFinal extends StatefulWidget {
   const EditProfileFinal({super.key});
@@ -35,29 +32,20 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
 
   Future<void> _loadUserFromDb() async {
     try {
-      final token = Supabase.instance.client.auth.currentSession?.accessToken;
-      if (token == null || token.isEmpty) {
-        throw Exception('Not signed in');
+      final data = await ApiService.getCurrentUserProfile();
+      if (data != null) {
+        _nameController.text = (data['name'] ?? '').toString();
+        _emailController.text = (data['email'] ?? '').toString();
+        _phoneController.text = (data['phone'] ?? '').toString();
+        final dob = data['dob'];
+        if (dob != null && dob.toString().isNotEmpty) {
+          final s = dob.toString();
+          _dobController.text = s.contains('T') ? s.split('T').first : s.split(' ').first;
+        }
+        _addressController.text = (data['address'] ?? '').toString();
+        final img = (data['profile_image'] ?? data['profileImage'] ?? '').toString();
+        _profileImageUrl = img.isNotEmpty ? img : null;
       }
-      final uri = Uri.parse('${ApiService.baseUrl}/profile/self');
-      final res = await http.get(uri, headers: {
-        'Authorization': 'Bearer $token',
-      });
-      if (res.statusCode != 200) {
-        throw Exception('Failed to load: ${res.statusCode} ${res.body}');
-      }
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
-      _nameController.text = (data['name'] ?? '').toString();
-      _emailController.text = (data['email'] ?? '').toString();
-      _phoneController.text = (data['phone'] ?? '').toString();
-      final dob = data['dob'];
-      if (dob != null && dob.toString().isNotEmpty) {
-        final s = dob.toString();
-        _dobController.text = s.contains('T') ? s.split('T').first : s.split(' ').first;
-      }
-      _addressController.text = (data['address'] ?? '').toString();
-      final img = (data['profile_image'] ?? data['profileImage'] ?? '').toString();
-      _profileImageUrl = img.isNotEmpty ? img : null;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -359,15 +347,16 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
                                     if (!_formKey.currentState!.validate()) return;
                                     setState(() => _loading = true);
                                     try {
-                                      await ApiService.updateSelf(
-                                        name: _nameController.text.trim(),
-                                        email: _emailController.text.trim(),
-                                        phone: _phoneController.text.trim(),
-                                        // dob: _dobController.text.trim(),
-                                        // address: _addressController.text.trim(),
-                                        // image: _selectedImage,
+                                      final result = await ApiService.updateSelf(
+                                        name: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : null,
+                                        email: _emailController.text.trim().isNotEmpty ? _emailController.text.trim() : null,
+                                        phone: _phoneController.text.trim().isNotEmpty ? _phoneController.text.trim() : null,
+                                        dob: _dobController.text.trim().isNotEmpty ? _dobController.text.trim() : null,
+                                        address: _addressController.text.trim().isNotEmpty ? _addressController.text.trim() : null,
+                                        avatar: _selectedImage,
                                       );
-                                      if (mounted) {
+
+                                      if (mounted && result != null) {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           const SnackBar(content: Text('Profile Updated Successfully')),
                                         );
@@ -475,11 +464,11 @@ class _EditProfileFinalState extends State<EditProfileFinal> {
             contentPadding: const EdgeInsets.all(16),
           ),
           validator: (value) {
-            if (value == null || value.isEmpty) {
+            if ((label != 'Date of Birth' && label != 'Address') && (value == null || value.isEmpty)) {
               return 'Please enter $label';
-            }
-            return null;
-          },
+          }
+  return null;
+},
         ),
       ],
     );

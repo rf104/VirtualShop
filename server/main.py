@@ -1069,10 +1069,15 @@ def get_sellers():
     return sellers
 
 @app.get("/users/{user_id}")
-def get_user_profile(user_id: int):
+def get_user_profile(user_id: str, authorization: str | None = Header(default=None)):
     """
-    Fetch all info of a specific user by user_id from Supabase 'users' table.
+    Fetch all info of a specific user by auth_id from Supabase 'users' table.
     """
+    # Verify the user is accessing their own profile
+    auth_user_id = _get_user_from_authorization(authorization)
+    if not auth_user_id or auth_user_id != user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized: can only access your own profile")
+
     client = getattr(app.state, "supabase", None)
     if client is None:
         raise HTTPException(status_code=500, detail="Supabase not configured")
@@ -1081,7 +1086,7 @@ def get_user_profile(user_id: int):
         user_res = (
             client.table("users")
             .select("*")
-            .eq("user_id", user_id)   # filter by user_id
+            .eq("auth_id", user_id)   # filter by auth_id
             .single()            # expect exactly one row
             .execute()
         )
@@ -1093,3 +1098,96 @@ def get_user_profile(user_id: int):
 
     return user_res.data
 
+## Update User Profile Info
+@app.put("/users/{user_id}")
+async def update_user_profile(
+    user_id: str,
+    authorization: str | None = Header(default=None),
+    name: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+    dob: Optional[str] = Form(None),
+    address: Optional[str] = Form(None),
+    profile_image: UploadFile | None = File(None),
+):
+    """
+    Update user profile information for a specific user by user_id.
+    Accepts multipart form data with optional profile image upload.
+    """
+    # Verify the user is updating their own profile
+    auth_user_id = _get_user_from_authorization(authorization)
+    if not auth_user_id or auth_user_id != user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized: can only update your own profile")
+
+    client = getattr(app.state, "supabase", None) 
+    if client is None:  
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    # Prepare update data
+    update_data = {}
+    if name is not None:
+        update_data["name"] = name
+    if email is not None:
+        update_data["email"] = email
+    if phone is not None:
+        update_data["phone"] = phone
+    if dob is not None:
+        update_data["dob"] = dob
+    if address is not None:
+        update_data["address"] = address
+
+    # Handle profile image upload
+    if profile_image is not None:
+        content = await profile_image.read()
+        if content:
+            bucket = os.getenv("PROFILE_BUCKET", "profile-images")
+            _ensure_bucket(client, bucket)
+            ext = (profile_image.filename.split(".")[-1] or "jpg").lower()
+            key = f"{user_id}/{uuid.uuid4()}.{ext}"
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+                    tmp.write(content)
+                    tmp.flush()
+                    tmp_path = tmp.name
+                client.storage.from_(bucket).upload(
+                    file=tmp_path,
+                    path=key,
+                    file_options={
+                        "content-type": profile_image.content_type or "image/jpeg",
+                        "upsert": True,
+                    },
+                )
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+            url_resp = client.storage.from_(bucket).get_public_url(key)
+            if isinstance(url_resp, str):
+                url = url_resp
+            elif isinstance(url_resp, dict):
+                url = url_resp.get("publicUrl") or url_resp.get("public_url") or url_resp.get("url")
+            else:
+                url = str(url_resp)
+            if url:
+                update_data["profile_image"] = url
+
+    if not update_data:
+        return {"ok": True, "message": "No changes to update"}
+
+    try:
+        update_res = (
+            client.table("users")
+            .update(update_data)
+            .eq("auth_id", user_id)  # Use auth_id instead of user_id
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Supabase query failed: {str(e)}")
+
+    if getattr(update_res, "error", None):
+        raise HTTPException(status_code=400, detail=str(update_res.error))
+
+    return {"ok": True, "data": update_res.data}
