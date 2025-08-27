@@ -819,7 +819,11 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                         context: context,
                         isScrollControlled: true,
                         backgroundColor: Colors.transparent,
-                        builder: (_) => const MyProductsSheet(),
+                        builder: (_) {
+                          final user = Supabase.instance.client.auth.currentUser;
+                          final sellerId = user?.id ?? '';
+                          return MyProductsSheet(sellerId: sellerId);
+                        },
                       );
                     },
                     child: Row(

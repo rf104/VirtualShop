@@ -1,9 +1,10 @@
 import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/pages/product_detail_page.dart';
 import 'package:virtual_shop/utils/product_repository.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 class AllProductPage extends StatefulWidget {
   const AllProductPage({super.key});
@@ -75,7 +76,9 @@ class _AllProductPageState extends State<AllProductPage> {
       setState(() {
         _products = items;
         _loading = false;
-        _knownCategories = items.map((e) => e.category.toLowerCase()).toSet();
+        _knownCategories = items
+            .map((e) => e.category.toString().split('.').last.toLowerCase())
+            .toSet();
       });
     } catch (e) {
       setState(() {
@@ -655,7 +658,7 @@ class ProductCard extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
         ),
         Text(
-          product.category,
+          product.category.toString().split('.').last,
           style: TextStyle(color: Colors.grey[600], fontSize: 12),
         ),
         Row(

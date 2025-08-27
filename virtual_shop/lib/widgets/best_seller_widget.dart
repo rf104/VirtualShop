@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../utils/product_service_rf.dart';
-import '../models/product_rf.dart' as rf_product;
-import '../models/product.dart' as main_product;
+
+import '../models/product.dart';
 import '../pages/product_detail_page.dart';
+import '../utils/product_repository.dart';
 
 class BestSellerWidget extends StatefulWidget {
   const BestSellerWidget({super.key});
@@ -12,34 +12,12 @@ class BestSellerWidget extends StatefulWidget {
 }
 
 class _BestSellerWidgetState extends State<BestSellerWidget> {
-  late Future<List<rf_product.Product>> _futureProducts;
+  late Future<List<Product>> _futureProducts;
 
   @override
   void initState() {
     super.initState();
-    _futureProducts = ProductService().fetchProducts();
-  }
-
-  // Convert rf_product.Product to main_product.Product for navigation
-  main_product.Product _convertProduct(rf_product.Product rfProduct) {
-    return main_product.Product(
-      id: rfProduct.id,
-      name: rfProduct.name,
-      image: rfProduct.imageUrl,
-      images: [rfProduct.imageUrl],
-      price: rfProduct.price,
-      category: rfProduct.category,
-      description: rfProduct.description,
-      brand: rfProduct.brand,
-      stock: rfProduct.stock,
-      condition: rfProduct.condition,
-      weightKg: rfProduct.weightKg,
-      dimensions: rfProduct.dimensions,
-      isFeatured: rfProduct.isFeatured,
-      isInStock: rfProduct.isInStock,
-      rating: 4.5, // Default rating since rf_product.Product doesn't have it
-      ratingCount: 10, // Default rating count
-    );
+    _futureProducts = ProductRepository.fetchAll();
   }
 
   @override
@@ -58,7 +36,7 @@ class _BestSellerWidgetState extends State<BestSellerWidget> {
         const SizedBox(height: 16),
         SizedBox(
           height: 220,
-          child: FutureBuilder<List<rf_product.Product>>(
+          child: FutureBuilder<List<Product>>(
             future: _futureProducts,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
@@ -77,12 +55,11 @@ class _BestSellerWidgetState extends State<BestSellerWidget> {
                   final item = products[index];
                   return GestureDetector(
                     onTap: () {
-                      // Convert rf_product.Product to main_product.Product and navigate
-                      final mainProduct = _convertProduct(item);
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => ProductDetailPage(product: mainProduct),
+                          builder: (context) =>
+                              ProductDetailPage(product: item),
                         ),
                       );
                     },
@@ -95,12 +72,24 @@ class _BestSellerWidgetState extends State<BestSellerWidget> {
                           ClipRRect(
                             borderRadius: BorderRadius.circular(12),
                             child: Image.network(
-                              item.imageUrl.isNotEmpty 
-                                  ? item.imageUrl 
+                              item.image.isNotEmpty
+                                  ? item.image 
                                   : "https://via.placeholder.com/150",
                               height: 150,
                               width: 150,
                               fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  height: 150,
+                                  width: 150,
+                                  color: Colors.grey[300],
+                                  child: const Icon(
+                                    Icons.image_not_supported,
+                                    color: Colors.grey,
+                                    size: 50,
+                                  ),
+                                );
+                              },
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -110,11 +99,30 @@ class _BestSellerWidgetState extends State<BestSellerWidget> {
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
                             ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           Text(
                             "৳${item.price.toStringAsFixed(2)}",
                             style: const TextStyle(color: Colors.white70),
                           ),
+                          if (item.rating > 0)
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.star,
+                                  color: Colors.amber,
+                                  size: 16,
+                                ),
+                                Text(
+                                  item.rating.toStringAsFixed(1),
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
                         ],
                       ),
                     ),

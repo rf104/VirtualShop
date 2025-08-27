@@ -1,7 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/pages/product_detail_page.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 class RelatedProductsPage extends StatelessWidget {
   final List<Product> products;
@@ -87,7 +87,7 @@ class ProductCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           Text(
-            product.category,
+            product.category.toString().split('.').last,
             style: TextStyle(color: Colors.grey[400], fontSize: 12),
           ),
           Row(

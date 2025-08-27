@@ -1,16 +1,19 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 import 'package:oc_liquid_glass/oc_liquid_glass.dart';
-import 'package:virtual_shop/widgets/glass_container.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'dart:async';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/pages/product_detail_page.dart';
+import 'package:virtual_shop/widgets/glass_container.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // No product model needed in story media view
 

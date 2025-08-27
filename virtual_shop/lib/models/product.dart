@@ -1,140 +1,124 @@
+// lib/models/product.dart
+// (Assuming this file exists or you'll create it)
+
+enum ProductCategory {
+  cozyWear,
+  footwear,
+  formalWear,
+  regularWear,
+  // Add other categories from your `public.product_category` enum
+  unspecified,
+}
+
+enum ProductCondition {
+  newCondition, // Renamed to avoid keyword conflict
+  used,
+  refurbished,
+  // Add other conditions from your `public.product_condition` enum
+}
+
 class Product {
   final String id;
+  final String authId; // Seller's auth_id
   final String name;
-  final String image; // Primary image URL or asset path
-  final List<String> images; // All image URLs if available
-  final double rating; // Average rating if available
-  final int? ratingCount;
-  final double price;
-  final String category;
   final String description;
+  final ProductCategory category;
   final String? brand;
-  final int? stock;
-  final String? condition;
+  final double price;
+  final int stock;
+  final ProductCondition condition;
   final double? weightKg;
   final String? dimensions;
-  final bool? isFeatured;
-  final bool? isInStock;
-  final DateTime? createdAt;
-  final DateTime? updatedAt;
-
-  // Legacy/UX fields retained for UI chips; may be empty
-  final String weather;
-  final String temp;
-  final String event;
-  bool isLoved;
+  final bool isFeatured;
+  final bool isInStock;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  // You might also want to include image URLs, if your DB stores them in the products table
+  // For now, I'll keep 'image' as a simple String for asset paths,
+  // but in a real app, it would be a network URL.
+  final String image;
+  final double rating;
+  bool isLoved; // For local UI state, not necessarily from DB
 
   Product({
-    this.id = '',
+    required this.id,
+    required this.authId,
     required this.name,
-    required this.image,
-    this.images = const [],
-    this.rating = 0,
-    this.ratingCount,
-    required this.price,
-    required this.category,
     required this.description,
+    required this.category,
     this.brand,
-    this.stock,
-    this.condition,
+    required this.price,
+    required this.stock,
+    required this.condition,
     this.weightKg,
     this.dimensions,
-    this.isFeatured,
-    this.isInStock,
-    this.createdAt,
-    this.updatedAt,
-    this.weather = '',
-    this.temp = '',
-    this.event = '',
+    required this.isFeatured,
+    required this.isInStock,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.image, // Placeholder for image URL
+    required this.rating,
     this.isLoved = false,
   });
 
+  // Factory constructor to create a Product from a JSON map (from your API)
   factory Product.fromJson(Map<String, dynamic> json) {
-    double toDouble(dynamic v, [double def = 0]) {
-      if (v == null) return def;
-      if (v is num) return v.toDouble();
-      return double.tryParse(v.toString()) ?? def;
-    }
-
-    int? toInt(dynamic v) {
-      if (v == null) return null;
-      if (v is int) return v;
-      if (v is num) return v.toInt();
-      return int.tryParse(v.toString());
-    }
-
-    DateTime? toDate(dynamic v) {
-      if (v == null) return null;
-      try {
-        return DateTime.parse(v.toString());
-      } catch (_) {
-        return null;
+    // Helper to parse category string to enum
+    ProductCategory parseCategory(String categoryStr) {
+      switch (categoryStr.toLowerCase()) {
+        case 'cozy wear':
+          return ProductCategory.cozyWear;
+        case 'footwear':
+          return ProductCategory.footwear;
+        case 'formal wear':
+          return ProductCategory.formalWear;
+        case 'regular wear':
+          return ProductCategory.regularWear;
+        // Add more cases as per your product_category enum in Supabase
+        default:
+          return ProductCategory.unspecified;
       }
     }
 
-    List<String> extractImages(Map<String, dynamic> map) {
-      final dynamic imgsDyn = map['images'] ?? map['product_images'];
-      if (imgsDyn is List) {
-        // Could be a list of urls or list of objects with image_url
-        final List<String> urls = [];
-        for (final e in imgsDyn) {
-          if (e is String) {
-            urls.add(e);
-          } else if (e is Map) {
-            final u = e['image_url'] ?? e['url'] ?? e['src'];
-            if (u != null && u.toString().isNotEmpty) urls.add(u.toString());
-          }
-        }
-        return urls;
+    // Helper to parse condition string to enum
+    ProductCondition parseCondition(String conditionStr) {
+      switch (conditionStr.toLowerCase()) {
+        case 'new':
+          return ProductCondition.newCondition;
+        case 'used':
+          return ProductCondition.used;
+        case 'refurbished':
+          return ProductCondition.refurbished;
+        // Add more cases as per your product_condition enum in Supabase
+        default:
+          return ProductCondition.newCondition; // Default or error
       }
-      return const [];
-    }
-
-    String pickImage(Map<String, dynamic> map) {
-      // Prefer explicit primary fields
-      final img = map['image_url'] ?? map['image'] ?? map['thumbnail'] ?? '';
-      if (img != null && img.toString().isNotEmpty) {
-        return img.toString();
-      }
-      // Or derive from images array
-      final imgs = extractImages(map);
-      if (imgs.isNotEmpty) return imgs.first;
-      return '';
     }
 
     return Product(
-      id: json['id']?.toString() ?? '',
-      name:
-          json['name']?.toString() ??
-          json['product_name']?.toString() ??
-          'Product',
-      image: pickImage(json),
-      images: extractImages(json),
-      rating: toDouble(
-        json['rating'] ?? json['avg_rating'] ?? json['rating_avg'],
-        0,
-      ),
-      ratingCount: toInt(
-        json['rating_count'] ?? json['reviews_count'] ?? json['count_reviews'],
-      ),
-      price: toDouble(json['price'], 0),
-      category: json['category']?.toString() ?? '',
-      description: json['description']?.toString() ?? '',
-      brand: json['brand']?.toString(),
-      stock: toInt(json['stock']),
-      condition: json['condition']?.toString(),
-      weightKg: toDouble(json['weight_kg'], 0) == 0 && json['weight_kg'] == null
-          ? null
-          : toDouble(json['weight_kg']),
-      dimensions: json['dimensions']?.toString(),
-      isFeatured: json['is_featured'] as bool?,
-      isInStock: json['is_in_stock'] as bool?,
-      createdAt: toDate(json['created_at']),
-      updatedAt: toDate(json['updated_at']),
-      // Optional UX extras if backend ever provides them
-      weather: json['weather']?.toString() ?? '',
-      temp: json['temp']?.toString() ?? '',
-      event: json['event']?.toString() ?? '',
+      id: json['id'],
+      authId: json['auth_id'],
+      name: json['name'],
+      description: json['description'],
+      category: parseCategory(json['category']),
+      brand: json['brand'],
+      price: (json['price'] as num).toDouble(),
+      stock: json['stock'],
+      condition: parseCondition(json['condition']),
+      weightKg: (json['weight_kg'] as num?)?.toDouble(),
+      dimensions: json['dimensions'],
+      isFeatured: json['is_featured'],
+      isInStock: json['is_in_stock'],
+      createdAt: DateTime.parse(json['created_at']),
+      updatedAt: DateTime.parse(json['updated_at']),
+      // Assuming 'image' field for network URL for simplicity.
+      // You might have a separate table for product images.
+      // For now, I'll use a placeholder if 'image_url' isn't directly in products table.
+      rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
+      image: json['image_url'] ?? 'assets/images/placeholder.jpg',
+      isLoved:
+          json['is_loved'] ??
+          false, // Assuming is_loved can come from DB or defaults
     );
   }
 }
