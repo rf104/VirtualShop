@@ -19,6 +19,13 @@ from server.supabase_client import get_supabase, SupabaseNotConfigured
 import httpx
 import base64
 import json as _json
+import requests as _requests
+
+try:
+    from gradio_client import Client as _GradioClient, handle_file as _handle_file
+except Exception:
+    _GradioClient = None
+    _handle_file = None
 
 app = FastAPI()
 
@@ -47,10 +54,204 @@ def _startup() -> None:
     # Lazy load CLIP on first use; here we just assign placeholder
     Models.clip = None
 
+    # Pre-create gradio client if possible to reduce cold start
+    try:
+        app.state.gradio_client = _GradioClient(
+            "ayna-ai-org/ayna-1.0") if _GradioClient else None
+    except Exception:
+        app.state.gradio_client = None
+
 
 @app.get("/")
 def read_root():
     return {"status": "ok"}
+
+
+@app.get("/ping")
+def ping():
+    return {"status": "ok"}
+
+
+class _TryOnRequest(_json.JSONEncoder):
+    pass
+
+
+@app.post("/process_image")
+def process_image(payload: dict):
+    """Bridge to Ayna-1.0 Gradio Space and upload resulting image to Supabase.
+
+    Body JSON:
+      - garment_img_url: http(s) URL to garment image
+      - person_img_url: http(s) URL to person image
+      - garment_type: default 'full-body'
+      - sleeve_length: default 'ignore'
+      - garment_length: default 'ignore'
+
+    Returns: { url: public_url } if upload succeeded; otherwise { result: raw }
+    """
+    client = getattr(app.state, "gradio_client", None)
+    if client is None:
+        # Try lazy init
+        if _GradioClient is None:
+            raise HTTPException(
+                status_code=500, detail="gradio_client not installed on server")
+        try:
+            client = _GradioClient("ayna-ai-org/ayna-1.0")
+            app.state.gradio_client = client
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Failed to init Gradio client: {e}")
+
+    g_url = str(payload.get("garment_img_url") or "").strip()
+    p_url = str(payload.get("person_img_url") or "").strip()
+    garment_type = str(payload.get("garment_type") or "full-body")
+    sleeve_length = str(payload.get("sleeve_length") or "ignore")
+    garment_length = str(payload.get("garment_length") or "ignore")
+    if not (g_url and p_url and (g_url.startswith("http://") or g_url.startswith("https://")) and (p_url.startswith("http://") or p_url.startswith("https://"))):
+        raise HTTPException(
+            status_code=400, detail="garment_img_url and person_img_url must be http(s) URLs")
+
+    try:
+        try:
+            res = client.predict(
+                garment_img=_handle_file(g_url),
+                person_img=_handle_file(p_url),
+                garment_type=garment_type,
+                sleeve_length=sleeve_length,
+                garment_length=garment_length,
+                api_name="/validate_inputs",
+            )
+        except Exception:
+            # Try common default endpoint name
+            res = client.predict(
+                garment_img=_handle_file(g_url),
+                person_img=_handle_file(p_url),
+                garment_type=garment_type,
+                sleeve_length=sleeve_length,
+                garment_length=garment_length,
+                api_name="/predict",
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # If response is a URL to an image, download it
+    url_candidate = None
+    if isinstance(res, str) and (res.startswith("http://") or res.startswith("https://")):
+        url_candidate = res
+    elif isinstance(res, (list, tuple)) and res:
+        for it in res:
+            if isinstance(it, str) and (it.startswith("http://") or it.startswith("https://")):
+                url_candidate = it
+                break
+    if url_candidate:
+        try:
+            r = _requests.get(url_candidate, timeout=120)
+            r.raise_for_status()
+            content = r.content
+            content_type = r.headers.get("content-type", "").lower()
+        except Exception as e:
+            raise HTTPException(
+                status_code=502, detail=f"Failed to download result: {e}")
+    else:
+        # If the Space returns bytes-like or dict with 'image'
+        if isinstance(res, (bytes, bytearray)):
+            content = bytes(res)
+            content_type = "image/png"
+        elif isinstance(res, dict):
+            # Best-effort: find base64 data
+            data = res.get("image") or res.get("data") or res.get("result")
+            if isinstance(data, (list, tuple)) and data:
+                # pick first string-like
+                for it in data:
+                    if isinstance(it, str):
+                        data = it
+                        break
+            if isinstance(data, str) and (data.startswith("http://") or data.startswith("https://")):
+                try:
+                    r = _requests.get(data, timeout=120)
+                    r.raise_for_status()
+                    content = r.content
+                    content_type = r.headers.get("content-type", "").lower()
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=502, detail=f"Failed to download result: {e}")
+            elif isinstance(data, str):
+                try:
+                    if "," in data:
+                        data = data.split(",", 1)[1]
+                    content = base64.b64decode(data)
+                    content_type = "image/png"
+                except Exception:
+                    # Could not parse; return raw
+                    return {"result": res}
+            else:
+                return {"result": res}
+        else:
+            # Unknown type; return raw
+            return {"result": res}
+
+    # Upload to Supabase Storage bucket (try-on)
+    sb = getattr(app.state, "supabase", None)
+    if sb is None:
+        # If Supabase not configured, return the image bytes base64 to client
+        b64 = base64.b64encode(content).decode("utf-8")
+        return {"data_uri": f"data:image/png;base64,{b64}"}
+
+    bucket = os.getenv("TRYON_BUCKET", "try-on")
+    try:
+        sb.storage.create_bucket(bucket, options={"public": True})
+    except Exception:
+        pass
+
+    # Save to temp and upload
+    # decide extension from content type
+    ctype = (locals().get("content_type") or "").lower()
+    if "jpeg" in ctype or "jpg" in ctype:
+        ext = ".jpg"
+        mime = "image/jpeg"
+    elif "webp" in ctype:
+        ext = ".webp"
+        mime = "image/webp"
+    elif "png" in ctype:
+        ext = ".png"
+        mime = "image/png"
+    else:
+        ext = ".png"
+        mime = "image/png"
+
+    key = f"results/{uuid.uuid4()}{ext}"
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+            tmp.write(content)
+            tmp.flush()
+            tmp_path = tmp.name
+        sb.storage.from_(bucket).upload(
+            file=tmp_path,
+            path=key,
+            file_options={
+                "content-type": mime,
+                "upsert": False,
+            },
+        )
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+    # Public URL
+    url_resp = sb.storage.from_(bucket).get_public_url(key)
+    if isinstance(url_resp, str):
+        url = url_resp
+    elif isinstance(url_resp, dict):
+        url = url_resp.get("publicUrl") or url_resp.get(
+            "public_url") or url_resp.get("url")
+    else:
+        url = str(url_resp)
+
+    return {"url": url}
 
 
 @app.get("/items/{item_id}")
@@ -129,94 +330,6 @@ def get_products_by_ids(ids: str):
     # Preserve input order
     out = [by_id[i] for i in raw if i in by_id]
     return out
-
-
-@app.get("/products/{product_id}")
-def get_product(product_id: str):
-    client = getattr(app.state, "supabase", None)
-    if client is None:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
-    res = client.table("products").select(
-        "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at"
-    ).eq("id", product_id).limit(1).execute()
-    if getattr(res, "error", None):
-        raise HTTPException(status_code=400, detail=str(res.error))
-    rows = res.data or []
-    if not rows:
-        raise HTTPException(status_code=404, detail="Product not found")
-    p = rows[0]
-    img_res = client.table("product_images").select("image_url").eq(
-        "product_id", product_id).order("created_at", desc=False).limit(1).execute()
-    if not getattr(img_res, "error", None) and img_res.data:
-        p = dict(p)
-        p["image_url"] = img_res.data[0].get("image_url")
-    return p
-
-
-def _get_clip() -> SentenceTransformer:
-    if Models.clip is None:
-        # OpenAI CLIP ViT-B/32. SentenceTransformers handles image+text.
-        Models.clip = SentenceTransformer("clip-ViT-B-32")
-    return Models.clip
-
-
-def _normalize_embedding(vec) -> list:
-    # Ensure python list of floats for pgvector insertion
-    if hasattr(vec, "tolist"):
-        return [float(x) for x in vec.tolist()]
-    return [float(x) for x in vec]
-
-
-def _decode_jwt_sub(authorization: str | None) -> str | None:
-    """Best-effort decode of JWT `sub` (user id) from Authorization header.
-
-    This does not verify signature; the server only uses it to associate
-    the review with the requester while still requiring a valid-looking token.
-    """
-    if not authorization or not authorization.lower().startswith("bearer "):
-        return None
-    token = authorization.split(" ", 1)[1].strip()
-    parts = token.split(".")
-    if len(parts) < 2:
-        return None
-    payload_b64 = parts[1]
-    # base64url decode with padding
-    pad = '=' * (-len(payload_b64) % 4)
-    try:
-        payload_bytes = base64.urlsafe_b64decode(payload_b64 + pad)
-        payload = _json.loads(payload_bytes.decode("utf-8"))
-        # Supabase places the user id in `sub`
-        sub = payload.get("sub") or payload.get("user_id")
-        if isinstance(sub, str) and sub:
-            return sub
-    except Exception:
-        return None
-    return None
-
-
-def _get_user_from_authorization(authorization: str | None) -> str | None:
-    """Verify JWT using Supabase and return `sub` if valid; fallback to decode.
-
-    Returns the user id (auth.users.id) or None.
-    """
-    if not authorization or not authorization.lower().startswith("bearer "):
-        return None
-    token = authorization.split(" ", 1)[1].strip()
-    client = getattr(app.state, "supabase", None)
-    if client is not None:
-        try:
-            claims = client.auth.get_claims(jwt=token)
-            # supabase-py may return dict or object with .claims
-            data = claims if isinstance(
-                claims, dict) else getattr(claims, "claims", None)
-            if isinstance(data, dict):
-                sub = data.get("sub") or data.get("user_id")
-                if isinstance(sub, str) and sub:
-                    return sub
-        except Exception:
-            pass
-    # Fallback to insecure local decode
-    return _decode_jwt_sub(authorization)
 
 
 @app.get("/products/search")
@@ -306,6 +419,94 @@ def search_products(q: str, limit: int = 24):
         results.append(obj)
 
     return {"results": results}
+
+
+@app.get("/products/{product_id}")
+def get_product(product_id: uuid.UUID):
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    res = client.table("products").select(
+        "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at"
+    ).eq("id", str(product_id)).limit(1).execute()
+    if getattr(res, "error", None):
+        raise HTTPException(status_code=400, detail=str(res.error))
+    rows = res.data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Product not found")
+    p = rows[0]
+    img_res = client.table("product_images").select("image_url").eq(
+        "product_id", str(product_id)).order("created_at", desc=False).limit(1).execute()
+    if not getattr(img_res, "error", None) and img_res.data:
+        p = dict(p)
+        p["image_url"] = img_res.data[0].get("image_url")
+    return p
+
+
+def _get_clip() -> SentenceTransformer:
+    if Models.clip is None:
+        # OpenAI CLIP ViT-B/32. SentenceTransformers handles image+text.
+        Models.clip = SentenceTransformer("clip-ViT-B-32")
+    return Models.clip
+
+
+def _normalize_embedding(vec) -> list:
+    # Ensure python list of floats for pgvector insertion
+    if hasattr(vec, "tolist"):
+        return [float(x) for x in vec.tolist()]
+    return [float(x) for x in vec]
+
+
+def _decode_jwt_sub(authorization: str | None) -> str | None:
+    """Best-effort decode of JWT `sub` (user id) from Authorization header.
+
+    This does not verify signature; the server only uses it to associate
+    the review with the requester while still requiring a valid-looking token.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    parts = token.split(".")
+    if len(parts) < 2:
+        return None
+    payload_b64 = parts[1]
+    # base64url decode with padding
+    pad = '=' * (-len(payload_b64) % 4)
+    try:
+        payload_bytes = base64.urlsafe_b64decode(payload_b64 + pad)
+        payload = _json.loads(payload_bytes.decode("utf-8"))
+        # Supabase places the user id in `sub`
+        sub = payload.get("sub") or payload.get("user_id")
+        if isinstance(sub, str) and sub:
+            return sub
+    except Exception:
+        return None
+    return None
+
+
+def _get_user_from_authorization(authorization: str | None) -> str | None:
+    """Verify JWT using Supabase and return `sub` if valid; fallback to decode.
+
+    Returns the user id (auth.users.id) or None.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    client = getattr(app.state, "supabase", None)
+    if client is not None:
+        try:
+            claims = client.auth.get_claims(jwt=token)
+            # supabase-py may return dict or object with .claims
+            data = claims if isinstance(
+                claims, dict) else getattr(claims, "claims", None)
+            if isinstance(data, dict):
+                sub = data.get("sub") or data.get("user_id")
+                if isinstance(sub, str) and sub:
+                    return sub
+        except Exception:
+            pass
+    # Fallback to insecure local decode
+    return _decode_jwt_sub(authorization)
 
 
 # ---------------------- REVIEWS API ----------------------
