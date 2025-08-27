@@ -1,9 +1,16 @@
+import 'dart:convert'; // For JSON decoding
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:virtual_shop/models/product.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http; // For making HTTP requests
+import 'package:virtual_shop/models/product.dart'; // Make sure this path is correct
 import 'package:virtual_shop/pages/product_detail_page.dart';
 
 class MyProductsSheet extends StatefulWidget {
-  const MyProductsSheet({super.key});
+  final String sellerId; // Pass the seller ID to fetch products for
+  const MyProductsSheet({super.key, required this.sellerId});
 
   @override
   State<MyProductsSheet> createState() => _MyProductsSheetState();
@@ -11,168 +18,103 @@ class MyProductsSheet extends StatefulWidget {
 
 class _MyProductsSheetState extends State<MyProductsSheet> {
   String _selectedFilter = "All";
+  List<Product> _allProducts = []; // Store all fetched products
+  List<Product> _filteredProducts = []; // Products shown based on filter
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  String get _baseUrl {
+    final fromServer = dotenv.env['SERVER_URL']?.trim();
+    final fromBackend = dotenv.env['BACKEND_URL']?.trim();
+    String raw = (fromServer?.isNotEmpty == true)
+        ? fromServer!
+        : (fromBackend?.isNotEmpty == true
+              ? fromBackend!
+              : 'http://127.0.0.1:8000');
+    // Remove accidental whitespace after scheme like 'http:// 127.0.0.1:8000'
+    raw = raw.replaceFirst(RegExp(r'^(https?://)\s+'), r'$1');
+    String url = raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
+    // Map localhost to Android emulator loopback if applicable
+    try {
+      if (!kIsWeb && Platform.isAndroid) {
+        final uri = Uri.parse(url);
+        if (uri.host == '127.0.0.1' || uri.host == 'localhost') {
+          url = uri
+              .replace(host: dotenv.env['hostIp'] ?? '192.168.0.106')
+              .toString();
+        }
+      }
+    } catch (_) {}
+    return url;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSellerProducts();
+  }
+
+  Future<void> _fetchSellerProducts() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    // Use the same base URL pattern as ImageSearchService
+    final String apiUrl = "$_baseUrl/sellers/${widget.sellerId}/products";
+
+    try {
+      final response = await http.get(Uri.parse(apiUrl));
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        final List<dynamic> productsJson = data['products'];
+        _allProducts = productsJson
+            .map((json) => Product.fromJson(json))
+            .toList();
+        _applyFilter(); // Apply initial filter after fetching
+      } else {
+        setState(() {
+          _errorMessage =
+              "Failed to load products: ${response.statusCode} - ${response.reasonPhrase}";
+          print("Error: ${response.body}");
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Error fetching products: $e";
+        print("Exception: $e");
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _applyFilter() {
+    setState(() {
+      if (_selectedFilter == "All") {
+        _filteredProducts = List.from(_allProducts); // Create a new list
+      } else if (_selectedFilter == "In Stock") {
+        // Based on the 'stock' and 'is_in_stock' fields from your DB schema
+        _filteredProducts = _allProducts
+            .where((p) => p.isInStock && p.stock > 10)
+            .toList();
+      } else if (_selectedFilter == "Low Stock") {
+        _filteredProducts = _allProducts
+            .where((p) => p.isInStock && p.stock <= 10 && p.stock > 0)
+            .toList();
+      } else if (_selectedFilter == "Out of Stock") {
+        _filteredProducts = _allProducts
+            .where((p) => !p.isInStock || p.stock == 0)
+            .toList();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Using the same Product model as other pages
-    final List<Product> products = [
-      // Products from AllProductPage
-      Product(
-        name: 'Winter Shearling Jacket',
-        image: 'assets/images/hoodie.jpg',
-        rating: 4.1,
-        price: 120.00,
-        category: 'Cozy Wear',
-        weather: 'Rainy',
-        temp: '16-22°C',
-        event: 'Promenade',
-        description:
-            'Elevate your winter wardrobe with this luxurious white shearling jacket.',
-        // stockStatus: 'Low Stock', // Assuming this is not part of the Product model provided
-        // sold: 45, // Assuming this is not part of the Product model provided
-      ),
-      Product(
-        name: 'Casual Chic Hat',
-        image: 'assets/images/hat.jpg',
-        rating: 4.8,
-        price: 85.50,
-        category: 'Regular Wear',
-        weather: 'Neutral',
-        temp: '16-22°C',
-        event: 'Promenade',
-        description:
-            'Step out in style with this casual chic ensemble featuring a trendy hat.',
-        // stockStatus: 'In Stock',
-        // sold: 120,
-      ),
-      Product(
-        name: 'Urban Explorer Shoes',
-        image: 'assets/images/shoe.jpg',
-        rating: 4.9,
-        price: 215.00,
-        category: 'Footwear',
-        weather: 'Rainy',
-        temp: '16-22°C',
-        event: 'Promenade',
-        description:
-            'Gear up for your next adventure with these durable boots.',
-        // stockStatus: 'In Stock',
-        // sold: 75,
-      ),
-      // Products from StoryPage
-      Product(
-        image: 'assets/images/demo1.jpg',
-        name: "Arik's Summer Shirt",
-        rating: 4.2,
-        price: 75.00,
-        category: 'Cozy Wear',
-        weather: 'Sunny',
-        temp: '25-30°C',
-        event: 'Beach',
-        description: 'A nice shirt.',
-        // stockStatus: 'Low Stock',
-        // sold: 60,
-      ),
-      Product(
-        image: 'assets/images/demo2.jpg',
-        name: "Arik's Winter Jacket",
-        rating: 4.1,
-        price: 150.00,
-        category: 'Cozy Wear',
-        weather: 'Rainy',
-        temp: '16-22°C',
-        event: 'Promenade',
-        description: 'A nice jacket.',
-        // stockStatus: 'Low Stock',
-        // sold: 40,
-      ),
-      Product(
-        image: 'assets/images/demo3.jpg',
-        name: "Arik's Fall Coat",
-        rating: 3.9,
-        price: 180.00,
-        category: 'Cozy Wear',
-        weather: 'Cloudy',
-        temp: '10-15°C',
-        event: 'Walk',
-        description: 'A nice coat.',
-        // stockStatus: 'Out of Stock',
-        // sold: 10,
-      ),
-      Product(
-        name: "Samin's Clothing Set",
-        image: 'assets/images/demo4.jpg',
-        rating: 4.5,
-        price: 300.00,
-        category: 'Cozy Wear',
-        weather: 'Any',
-        temp: 'Any',
-        event: 'Any',
-        description: 'A nice set.',
-        // stockStatus: 'In Stock',
-        // sold: 90,
-      ),
-      Product(
-        name: "Aref's Clothing Set",
-        image: 'assets/images/demo5.jpg',
-        rating: 4.6,
-        price: 300.00,
-        category: 'Cozy Wear',
-        weather: 'Any',
-        temp: 'Any',
-        event: 'Any',
-        description: 'A nice set.',
-        // stockStatus: 'In Stock',
-        // sold: 95,
-      ),
-      // Additional fashion items
-      Product(
-        name: 'Designer Dress',
-        image: 'assets/images/dress1.jpg',
-        rating: 4.6,
-        price: 280.00,
-        category: 'Formal Wear',
-        weather: 'Any',
-        temp: 'Any',
-        event: 'Party',
-        description: 'Elegant evening dress perfect for special occasions.',
-        // stockStatus: 'In Stock',
-        // sold: 30,
-      ),
-      Product(
-        name: 'Casual Sneakers',
-        image: 'assets/images/sneakers.jpg',
-        rating: 4.4,
-        price: 95.00,
-        category: 'Footwear',
-        weather: 'Any',
-        temp: 'Any',
-        event: 'Casual',
-        description: 'Comfortable sneakers for everyday wear.',
-        // stockStatus: 'Low Stock',
-        // sold: 55,
-      ),
-    ];
-
-    // Filter products based on selected filter
-    // NOTE: The provided Product model does not have stockStatus or sold fields.
-    // This filtering logic would need adjustment if those fields are intended.
-    // For now, we'll filter based on rating as a proxy for availability,
-    // or you can add those fields to your Product model.
-    List<Product> filteredProducts = products;
-    if (_selectedFilter == "In Stock") {
-      // Assuming "In Stock" means rating >= 4.5 for demo purposes
-      filteredProducts = products.where((p) => p.rating >= 4.5).toList();
-    } else if (_selectedFilter == "Low Stock") {
-      // Assuming "Low Stock" means rating >= 4.0 and < 4.5 for demo purposes
-      filteredProducts = products
-          .where((p) => p.rating >= 4.0 && p.rating < 4.5)
-          .toList();
-    } else if (_selectedFilter == "Out of Stock") {
-      // Assuming "Out of Stock" means rating < 4.0 for demo purposes
-      filteredProducts = products.where((p) => p.rating < 4.0).toList();
-    }
-
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.85,
@@ -232,7 +174,7 @@ class _MyProductsSheetState extends State<MyProductsSheet> {
                                 ),
                               ),
                               Text(
-                                "Overview for your ${filteredProducts.length} products",
+                                "Overview for your ${_filteredProducts.length} products",
                                 style: TextStyle(
                                   color: Colors.white.withOpacity(0.7),
                                   fontSize: 16,
@@ -262,6 +204,7 @@ class _MyProductsSheetState extends State<MyProductsSheet> {
                             onTap: () {
                               setState(() {
                                 _selectedFilter = "All";
+                                _applyFilter();
                               });
                             },
                           ),
@@ -272,6 +215,7 @@ class _MyProductsSheetState extends State<MyProductsSheet> {
                             onTap: () {
                               setState(() {
                                 _selectedFilter = "In Stock";
+                                _applyFilter();
                               });
                             },
                           ),
@@ -282,6 +226,7 @@ class _MyProductsSheetState extends State<MyProductsSheet> {
                             onTap: () {
                               setState(() {
                                 _selectedFilter = "Low Stock";
+                                _applyFilter();
                               });
                             },
                           ),
@@ -292,6 +237,7 @@ class _MyProductsSheetState extends State<MyProductsSheet> {
                             onTap: () {
                               setState(() {
                                 _selectedFilter = "Out of Stock";
+                                _applyFilter();
                               });
                             },
                           ),
@@ -303,10 +249,22 @@ class _MyProductsSheetState extends State<MyProductsSheet> {
               ),
               // Product grid
               Expanded(
-                child: filteredProducts.isEmpty
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _errorMessage != null
                     ? Center(
                         child: Text(
-                          "No products found",
+                          _errorMessage!,
+                          style: TextStyle(
+                            color: Colors.red.withOpacity(0.9),
+                            fontSize: 16,
+                          ),
+                        ),
+                      )
+                    : _filteredProducts.isEmpty
+                    ? Center(
+                        child: Text(
+                          "No products found for this filter.",
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.7),
                             fontSize: 16,
@@ -318,7 +276,7 @@ class _MyProductsSheetState extends State<MyProductsSheet> {
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         children: [
                           GridView.builder(
-                            itemCount: filteredProducts.length,
+                            itemCount: _filteredProducts.length,
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
                             padding: EdgeInsets.zero,
@@ -330,7 +288,7 @@ class _MyProductsSheetState extends State<MyProductsSheet> {
                                   crossAxisSpacing: 16,
                                 ),
                             itemBuilder: (_, i) {
-                              final product = filteredProducts[i];
+                              final product = _filteredProducts[i];
                               return _ProductCard(product: product);
                             },
                           ),
@@ -347,6 +305,7 @@ class _MyProductsSheetState extends State<MyProductsSheet> {
   }
 }
 
+// Filter chip widget for filter selection
 class _FilterChip extends StatelessWidget {
   final String label;
   final bool isSelected;
@@ -356,6 +315,7 @@ class _FilterChip extends StatelessWidget {
     required this.label,
     required this.isSelected,
     required this.onTap,
+    super.key,
   });
 
   @override
@@ -364,18 +324,20 @@ class _FilterChip extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 2),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xff667eea) : Colors.transparent,
+          color: isSelected ? const Color(0xff667eea) : Colors.grey[800],
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? const Color(0xff667eea) : Colors.grey[600]!,
+            color: isSelected ? const Color(0xff667eea) : Colors.grey[700]!,
+            width: 1.5,
           ),
         ),
         child: Text(
           label,
           style: TextStyle(
             color: isSelected ? Colors.white : Colors.white.withOpacity(0.7),
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            fontWeight: FontWeight.w600,
             fontSize: 14,
           ),
         ),
@@ -388,6 +350,22 @@ class _ProductCard extends StatelessWidget {
   final Product product;
 
   const _ProductCard({required this.product});
+
+  // Helper to get stock status text based on actual stock
+  String _getStockStatusText(Product product) {
+    if (!product.isInStock || product.stock == 0) return "Out of Stock";
+    if (product.stock <= 10) return "Low Stock";
+    return "In Stock";
+  }
+
+  // Helper to get stock color based on actual stock
+  Color _getStockColor(Product product) {
+    if (!product.isInStock || product.stock == 0) {
+      return const Color(0xffE53E3E); // Red
+    }
+    if (product.stock <= 10) return const Color(0xffED8936); // Orange
+    return const Color(0xff38A169); // Green
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -417,17 +395,31 @@ class _ProductCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           child: Stack(
             children: [
-              // Image
+              // Image - Now using NetworkImage for dynamic content
               Positioned.fill(
-                child: Image.asset(
-                  product.image,
+                child: Image.network(
+                  product.image, // Use product.image (expected to be a URL)
                   fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Center(
+                      child: CircularProgressIndicator(
+                        value: loadingProgress.expectedTotalBytes != null
+                            ? loadingProgress.cumulativeBytesLoaded /
+                                  loadingProgress.expectedTotalBytes!
+                            : null,
+                      ),
+                    );
+                  },
                   errorBuilder: (context, error, stackTrace) {
                     return Container(
                       color: Colors.grey[700],
-                      child: const Icon(
-                        Icons.image_not_supported,
+                      child: Icon(
+                        _getCategoryIcon(
+                          product.category.toString().split('.').last,
+                        ), // Use enum to string
                         color: Colors.white,
+                        size: 40,
                       ),
                     );
                   },
@@ -448,7 +440,7 @@ class _ProductCard extends StatelessWidget {
                   ),
                 ),
               ),
-              // Stock status (using rating as proxy since stockStatus is not in the provided model)
+              // Stock status
               Positioned(
                 top: 12,
                 right: 12,
@@ -458,15 +450,11 @@ class _ProductCard extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: _getStockColor(
-                      product.rating,
-                    ), // Using rating to determine color
+                    color: _getStockColor(product),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    _getStockStatusText(
-                      product.rating,
-                    ), // Using rating to determine text
+                    _getStockStatusText(product),
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 10,
@@ -526,7 +514,11 @@ class _ProductCard extends StatelessWidget {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                product.rating.toString(),
+                                // Assuming we want to show a rating, but your DB schema doesn't have it.
+                                // You might need to add 'rating' to your Product model and DB if desired.
+                                // For now, I'll display a placeholder or derive from another field if you clarify.
+                                // Or, you can remove this section if ratings are not a feature.
+                                "4.5", // Placeholder
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.w500,
@@ -550,7 +542,9 @@ class _ProductCard extends StatelessWidget {
                     // Handle edit product logic here if needed
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Editing ${product.name}'),
+                        content: Text(
+                          'Editing ${product.name} (ID: ${product.id})',
+                        ),
                         backgroundColor: Colors.blueGrey,
                       ),
                     );
@@ -575,10 +569,14 @@ class _ProductCard extends StatelessWidget {
                 right: 55, // Adjusted position to not overlap stock status
                 child: GestureDetector(
                   onTap: () {
-                    // Toggle love status
-                    // Note: This change won't persist across widget rebuilds unless
-                    // state management is implemented.
-                    // For a real app, you'd likely use Provider or similar.
+                    // Toggle love status - This will need to be handled by local state or a state management solution
+                    // For now, it won't persist if product objects are re-fetched.
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Toggling love for ${product.name}'),
+                        backgroundColor: Colors.blueGrey,
+                      ),
+                    );
                   },
                   child: Container(
                     padding: const EdgeInsets.all(8),
@@ -600,180 +598,23 @@ class _ProductCard extends StatelessWidget {
       ),
     );
   }
-
-  // Helper to get stock status text based on rating
-  String _getStockStatusText(double rating) {
-    if (rating >= 4.5) return "In Stock";
-    if (rating >= 4.0) return "Low Stock";
-    return "Out of Stock";
-  }
-
-  // Helper to get stock color based on rating
-  Color _getStockColor(double rating) {
-    if (rating >= 4.5) return const Color(0xff38A169); // Green
-    if (rating >= 4.0) return const Color(0xffED8936); // Orange
-    return const Color(0xffE53E3E); // Red
-  }
 }
 
-// Helper function to get category icon
+// Helper function to get category icon - updated to work with Product enum
 IconData _getCategoryIcon(String? category) {
-  switch (category) {
-    case 'Cozy Wear':
+  switch (category?.toLowerCase()) {
+    case 'cozywear':
       return Icons.emoji_people;
-    case 'Footwear':
+    case 'footwear':
       return Icons.directions_walk;
-    case 'Formal Wear':
+    case 'formalwear':
       return Icons.checkroom;
-    case 'Regular Wear':
+    case 'regularwear':
       return Icons.style;
     default:
       return Icons.shopping_bag;
   }
 }
 
-// This function is not directly used within MyProductsSheet anymore,
-// but can be kept if needed elsewhere or for consistency.
-Widget _buildProductItem(BuildContext context, Map<String, dynamic> product) {
-  return GestureDetector(
-    onTap: () {
-      // Convert the product map to Product model
-      final productModel = Product(
-        name: product['name'] ?? '',
-        description: product['description'] ?? 'No description available',
-        price: (product['price'] as num?)?.toDouble() ?? 0.0,
-        image: product['image'] ?? '',
-        category: product['category'] ?? '',
-        rating: (product['rating'] as num?)?.toDouble() ?? 0.0,
-        weather: product['weather'] ?? 'Any',
-        temp: product['temp'] ?? 'Any',
-        event: product['event'] ?? 'Casual',
-        // isLoved is false by default if not provided
-      );
-
-      // Navigate to ProductDetailPage
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ProductDetailPage(product: productModel),
-        ),
-      );
-    },
-    child: Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[800],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[700]!),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: Colors.grey[700],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                product['image'],
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Icon(
-                  _getCategoryIcon(product['category']),
-                  color: Colors.white,
-                  size: 30,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  product['name'],
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  product['category'],
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.star, color: const Color(0xffFFD700), size: 16),
-                    const SizedBox(width: 4),
-                    Text(
-                      product['rating'].toString(),
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        // This assumes 'status' field in the map is 'Active' or 'Sold Out'
-                        color: product['status'] == 'Active'
-                            ? const Color(0xff38A169)
-                            : Colors.orange,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        product['status'] ?? 'Unknown',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                "৳${product['price']}",
-                style: const TextStyle(
-                  color: Color(0xff38A169),
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                "${product['sold']} sold", // Assuming 'sold' field exists in map
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.5),
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 8),
-          const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
-        ],
-      ),
-    ),
-  );
-}
+// The _buildProductItem function is no longer needed as we are using GridView.builder with _ProductCard.
+// You can remove it.

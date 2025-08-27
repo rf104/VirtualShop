@@ -1,21 +1,21 @@
-import 'dart:ui';
 import 'dart:convert';
-import 'dart:typed_data';
-import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:io' show Platform;
+import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:virtual_shop/models/product.dart';
+import 'package:virtual_shop/pages/virtual_closet.dart';
 import 'package:virtual_shop/widgets/best_seller_widget.dart';
 import 'package:virtual_shop/widgets/categories_widget.dart';
 import 'package:virtual_shop/widgets/favorite_stores.dart';
 import 'package:virtual_shop/widgets/promotion_widget.dart';
 import 'package:virtual_shop/widgets/shop_screenshots_widget.dart';
 import 'package:virtual_shop/widgets/story_page.dart';
-import 'package:virtual_shop/pages/virtual_closet.dart';
 
 class StoriesRepository {
   static String get _baseUrl {
@@ -491,15 +491,24 @@ class SharedCloset {
 final List<Product> dummyProducts = List.generate(
   15,
   (index) => Product(
+    id: 'dummy_${index + 1}',
+    authId: 'dummy_seller_${index + 1}',
     name: 'Product ${index + 1}',
+    description: 'This is a description for product ${index + 1}.',
+    category: ProductCategory.values[index % ProductCategory.values.length],
+    brand: 'Brand ${index + 1}',
+    price: (1.0 * index * 10) + 20,
+    stock: 10 + index,
+    condition: ProductCondition.values[index % ProductCondition.values.length],
+    weightKg: 0.5 + (index * 0.1),
+    dimensions: '${10 + index}x${10 + index}x${5 + index} cm',
+    isFeatured: index % 3 == 0,
+    isInStock: true,
+    createdAt: DateTime.now().subtract(Duration(days: index)),
+    updatedAt: DateTime.now().subtract(Duration(hours: index)),
     image: 'assets/images/demo${(index % 5) + 1}.jpg',
     rating: 4.5,
-    price: (1.0 * index * 10) + 20,
-    category: 'Category',
-    weather: 'Sunny',
-    temp: '25°C',
-    event: 'Casual',
-    description: 'This is a description for product ${index + 1}.',
+    isLoved: false,
   ),
 );
 

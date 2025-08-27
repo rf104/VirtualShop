@@ -4,10 +4,13 @@ import uuid
 import os
 import tempfile
 from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi import Header
 from fastapi.middleware.cors import CORSMiddleware
+from server.seller import router as seller_router
 from PIL import Image
 from sentence_transformers import SentenceTransformer
 import numpy as np
@@ -39,6 +42,7 @@ app.add_middleware(
 )
 
 
+
 class Models:
     clip: Optional[SentenceTransformer] = None
 
@@ -61,6 +65,9 @@ def _startup() -> None:
     except Exception:
         app.state.gradio_client = None
 
+
+# Register seller routes
+app.include_router(seller_router)
 
 @app.get("/")
 def read_root():
@@ -282,7 +289,7 @@ def list_products():
     # Note: PostgREST doesn't do arbitrary joins; we rely on a view or nested select
     # Here we select products and then fetch first image per product in a second query
     prod_res = client.table("products").select(
-        "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock").execute()
+        "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating").execute()
     if getattr(prod_res, "error", None):
         raise HTTPException(status_code=400, detail=str(prod_res.error))
     prods = prod_res.data or []
@@ -400,7 +407,7 @@ def search_products(q: str, limit: int = 24):
         return {"results": []}
 
     prod_res = client.table("products").select(
-        "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at"
+        "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
     ).in_("id", top_ids).execute()
     if getattr(prod_res, "error", None):
         raise HTTPException(status_code=400, detail=str(prod_res.error))
@@ -694,29 +701,216 @@ def add_to_cart(payload: dict, authorization: str | None = Header(default=None))
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# @app.post("/cart/checkout")
+# def checkout(authorization: str | None = Header(default=None)):
+#     if not authorization or not authorization.lower().startswith("bearer "):
+#         raise HTTPException(
+#             status_code=401, detail="Missing Authorization bearer token")
+#     try:
+#         base = os.environ.get("SUPABASE_URL")
+#         anon = os.environ.get("SUPABASE_ANON_KEY")
+#         if not base or not anon:
+#             raise HTTPException(
+#                 status_code=500, detail="SUPABASE_URL/ANON_KEY missing on server")
+#         url = base.rstrip("/") + "/rest/v1/rpc/checkout_self"
+#         headers = {
+#             "apikey": anon,
+#             "Authorization": authorization,
+#         }
+#         with httpx.Client(timeout=30.0) as s:
+#             r = s.post(url, headers=headers)
+#         if r.status_code >= 400:
+#             raise HTTPException(status_code=r.status_code, detail=r.text)
+#         return r.json()
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=str(e))
+
+# /cart/checkout endpoint (handles multi-shop checkout)
+
 @app.post("/cart/checkout")
 def checkout(authorization: str | None = Header(default=None)):
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(
-            status_code=401, detail="Missing Authorization bearer token")
+        raise HTTPException(status_code=401, detail="Missing Authorization bearer token")
+
+    base = os.environ.get("SUPABASE_URL")
+    anon = os.environ.get("SUPABASE_ANON_KEY")
+    if not base or not anon:
+        raise HTTPException(status_code=500, detail="SUPABASE_URL/ANON_KEY missing on server")
+
+    rpc_url = base.rstrip("/") + "/rest/v1/rpc/checkout_self"
+    headers = {"apikey": anon, "Authorization": authorization}
+
+    # 1) call checkout RPC
     try:
-        base = os.environ.get("SUPABASE_URL")
-        anon = os.environ.get("SUPABASE_ANON_KEY")
-        if not base or not anon:
-            raise HTTPException(
-                status_code=500, detail="SUPABASE_URL/ANON_KEY missing on server")
-        url = base.rstrip("/") + "/rest/v1/rpc/checkout_self"
-        headers = {
-            "apikey": anon,
-            "Authorization": authorization,
-        }
         with httpx.Client(timeout=30.0) as s:
-            r = s.post(url, headers=headers)
-        if r.status_code >= 400:
-            raise HTTPException(status_code=r.status_code, detail=r.text)
-        return r.json()
+            r = s.post(rpc_url, headers=headers)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=f"RPC call failed: {e}")
+
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"Checkout RPC error: {r.text}")
+
+    try:
+        checkout_resp = r.json()
+    except ValueError:
+        raise HTTPException(status_code=500, detail=f"Invalid JSON from checkout RPC: {r.text}")
+
+    # normalize into a list of shop-orders (orders may already be per-shop)
+    if isinstance(checkout_resp, dict):
+        orders = [checkout_resp]
+    elif isinstance(checkout_resp, list):
+        orders = checkout_resp
+    else:
+        orders = [checkout_resp]
+
+    # build payments payload for each returned order (extract order_id, shop info, amount)
+    payments_payload_by_order = []
+    skipped = []
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    total_amount = Decimal("0.00")
+
+    for o in orders:
+        if not isinstance(o, dict):
+            skipped.append(o)
+            continue
+
+        # Try common id/amount keys
+        order_id = o.get("id") or o.get("order_id") or o.get("orderId")
+        amount = (o.get("total") or o.get("amount") or o.get("grand_total")
+                  or o.get("total_amount") or o.get("gross_price"))
+        shop_id = o.get("shop_id") or o.get("seller_id") or o.get("vendor_id")  # optional, if returned
+
+        if not order_id:
+            skipped.append(o)
+            continue
+
+        try:
+            if amount is None:
+                amt = Decimal("0.00")
+            else:
+                amt = Decimal(str(amount))
+        except (InvalidOperation, TypeError):
+            amt = Decimal("0.00")
+
+        total_amount += amt
+
+        payments_payload_by_order.append({
+            "order_id": order_id,
+            "payer_auth_id": None,               # fill if you decode JWT or have user id
+            "amount": str(amt),
+            "payment_method": "unknown",
+            "payment_status": "completed",
+            "transaction_id": str(uuid.uuid4()),
+            "paid_at": now_iso,
+            # optional metadata to help debugging / bookkeeping
+            "meta_shop_id": shop_id
+        })
+
+    # If nothing to do
+    if not payments_payload_by_order:
+        return {
+            "checkout": checkout_resp,
+            "payments": {"inserted": [], "skipped": skipped, "note": "no valid order ids returned"}
+        }
+
+    # --- OPTION B: try to create a master (parent) order and attach payments to that master id ---
+    # This creates a single top-level order record (id = master_order_id) so all payments reference same order_id.
+    # If creation of the master order fails (schema/constraints/RLS), we fall back to Option A (per-shop payments).
+    master_order_id = str(uuid.uuid4())
+    master_order_payload = {
+        "id": master_order_id,
+        # best-effort minimal fields; adjust according to your orders schema
+        "created_at": now_iso,
+        "order_status": "grouped",  # if your orders table does not have this column, insertion may fail
+        # optionally include totals for bookkeeping
+        "total_amount": str(total_amount) if total_amount is not None else None
+    }
+
+    orders_url = base.rstrip("/") + "/rest/v1/orders"
+    insert_headers = {
+        "apikey": anon,
+        "Authorization": authorization,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+
+    master_created = False
+    try:
+        with httpx.Client(timeout=30.0) as s:
+            # try creating the master order
+            mo_r = s.post(orders_url, headers=insert_headers, json=master_order_payload)
+    except Exception as e:
+        # network/timeout while creating master order -> fallback to Option A
+        mo_r = None
+
+    if mo_r and mo_r.status_code < 300:
+        master_created = True
+    else:
+        # If Supabase returned an error, we capture it for debug but keep going with Option A
+        master_err = mo_r.text if mo_r is not None else "no-response"
+        master_created = False
+
+    payments_url = base.rstrip("/") + "/rest/v1/payments"
+    insert_headers["Prefer"] = "return=representation"
+
+    if master_created:
+        # prepare payments payload: reference master_order_id for all payments (single order id for whole checkout)
+        payments_payload = []
+        for p in payments_payload_by_order:
+            payments_payload.append({
+                "order_id": master_order_id,
+                "payer_auth_id": p["payer_auth_id"],
+                "amount": p["amount"],
+                "payment_method": p["payment_method"],
+                "payment_status": p["payment_status"],
+                "transaction_id": p["transaction_id"],
+                "paid_at": p["paid_at"],
+            })
+        used_path = "grouped_master_order"
+    else:
+        # fallback: create a payment row per returned order (keeps order_id as each shop-order's id)
+        payments_payload = [
+            {
+                "order_id": p["order_id"],
+                "payer_auth_id": p["payer_auth_id"],
+                "amount": p["amount"],
+                "payment_method": p["payment_method"],
+                "payment_status": p["payment_status"],
+                "transaction_id": p["transaction_id"],
+                "paid_at": p["paid_at"],
+            }
+            for p in payments_payload_by_order
+        ]
+        used_path = "per_shop_orders"
+    
+    # Insert payments
+    try:
+        with httpx.Client(timeout=30.0) as s:
+            p_r = s.post(payments_url, headers=insert_headers, json=payments_payload)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Payments insert failed: {e}")
+
+    if p_r.status_code >= 400:
+        # show Supabase body so you can debug RLS/constraint issues
+        raise HTTPException(status_code=p_r.status_code, detail=f"Payments insert error: {p_r.text}")
+
+    try:
+        payments_result = p_r.json()
+    except ValueError:
+        payments_result = p_r.text
+
+    response = {
+        "checkout": checkout_resp,
+        "payments": {
+            "inserted": payments_result,
+            "path": used_path,
+            "master_order_id": master_order_id if master_created else None,
+            "master_creation_error": (master_err if not master_created else None),
+            "skipped": skipped
+        }
+    }
+    return response
+
 
 
 @app.get("/suggest")
@@ -1269,7 +1463,7 @@ def related_products(product_id: str, limit: int = 6):
 
     # 4) Fetch product rows in a single query
     prod_res = client.table("products").select(
-        "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at"
+        "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
     ).in_("id", top_ids).execute()
     if getattr(prod_res, "error", None):
         raise HTTPException(status_code=400, detail=str(prod_res.error))
@@ -1449,3 +1643,186 @@ async def create_product(
         "images": inserted_images,
         "text_embedding_dim": len(text_embedding),
     }
+
+## user profile test endpoint
+@app.get('/userprofile')
+def test():
+    return {"message": "User Profile Service is up and running."}
+
+
+## all user profiles
+@app.get("/users")
+def get_users():
+    """
+    Fetch all users from Supabase 'users' table.
+    """
+    # Get supabase client from app state
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    # Fetch all users
+    try:
+        user_res = client.table("users").select("*").execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Supabase query failed: {str(e)}")
+
+    # Check for query errors
+    if getattr(user_res, "error", None):
+        raise HTTPException(status_code=400, detail=str(user_res.error))
+
+    # Extract user data
+    users = user_res.data or []
+    return users
+
+## All sellers profile 
+@app.get("/sellers")
+def get_sellers():
+    """
+    Fetch all sellers from Supabase 'users' table.
+    Only returns rows where user_type = 'Seller'.
+    """
+    # Get supabase client
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        seller_res = (
+            client.table("users")
+            .select("*")
+            .eq("user_type", "Seller")
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Supabase query failed: {str(e)}")
+
+    if getattr(seller_res, "error", None):
+        raise HTTPException(status_code=400, detail=str(seller_res.error))
+
+    sellers = seller_res.data or []
+    return sellers
+
+@app.get("/users/{user_id}")
+def get_user_profile(user_id: str, authorization: str | None = Header(default=None)):
+    """
+    Fetch all info of a specific user by auth_id from Supabase 'users' table.
+    """
+    # Verify the user is accessing their own profile
+    auth_user_id = _get_user_from_authorization(authorization)
+    if not auth_user_id or auth_user_id != user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized: can only access your own profile")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        user_res = (
+            client.table("users")
+            .select("*")
+            .eq("auth_id", user_id)   # filter by auth_id
+            .single()            # expect exactly one row
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Supabase query failed: {str(e)}")
+
+    if getattr(user_res, "error", None):
+        raise HTTPException(status_code=404, detail="User not found")
+
+    return user_res.data
+
+## Update User Profile Info
+@app.put("/users/{user_id}")
+async def update_user_profile(
+    user_id: str,
+    authorization: str | None = Header(default=None),
+    name: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+    dob: Optional[str] = Form(None),
+    address: Optional[str] = Form(None),
+    profile_image: UploadFile | None = File(None),
+):
+    """
+    Update user profile information for a specific user by user_id.
+    Accepts multipart form data with optional profile image upload.
+    """
+    # Verify the user is updating their own profile
+    auth_user_id = _get_user_from_authorization(authorization)
+    if not auth_user_id or auth_user_id != user_id:
+        raise HTTPException(status_code=401, detail="Unauthorized: can only update your own profile")
+
+    client = getattr(app.state, "supabase", None) 
+    if client is None:  
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    # Prepare update data
+    update_data = {}
+    if name is not None:
+        update_data["name"] = name
+    if email is not None:
+        update_data["email"] = email
+    if phone is not None:
+        update_data["phone"] = phone
+    if dob is not None:
+        update_data["dob"] = dob
+    if address is not None:
+        update_data["address"] = address
+
+    # Handle profile image upload
+    if profile_image is not None:
+        content = await profile_image.read()
+        if content:
+            bucket = os.getenv("PROFILE_BUCKET", "profile-images")
+            _ensure_bucket(client, bucket)
+            ext = (profile_image.filename.split(".")[-1] or "jpg").lower()
+            key = f"{user_id}/{uuid.uuid4()}.{ext}"
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+                    tmp.write(content)
+                    tmp.flush()
+                    tmp_path = tmp.name
+                client.storage.from_(bucket).upload(
+                    file=tmp_path,
+                    path=key,
+                    file_options={
+                        "content-type": profile_image.content_type or "image/jpeg",
+                        "upsert": True,
+                    },
+                )
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+            url_resp = client.storage.from_(bucket).get_public_url(key)
+            if isinstance(url_resp, str):
+                url = url_resp
+            elif isinstance(url_resp, dict):
+                url = url_resp.get("publicUrl") or url_resp.get("public_url") or url_resp.get("url")
+            else:
+                url = str(url_resp)
+            if url:
+                update_data["profile_image"] = url
+
+    if not update_data:
+        return {"ok": True, "message": "No changes to update"}
+
+    try:
+        update_res = (
+            client.table("users")
+            .update(update_data)
+            .eq("auth_id", user_id)  # Use auth_id instead of user_id
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Supabase query failed: {str(e)}")
+
+    if getattr(update_res, "error", None):
+        raise HTTPException(status_code=400, detail=str(update_res.error))
+
+    return {"ok": True, "data": update_res.data}

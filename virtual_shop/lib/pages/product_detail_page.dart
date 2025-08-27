@@ -1,18 +1,18 @@
 import 'dart:ui';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:oc_liquid_glass/oc_liquid_glass.dart';
 import 'package:palette_generator/palette_generator.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:virtual_shop/models/product.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:virtual_shop/pages/chat_page.dart';
 import 'package:virtual_shop/pages/edit_product.dart';
 import 'package:virtual_shop/pages/virtual_try_on_page.dart';
-
-import 'package:virtual_shop/widgets/glass_container.dart';
 import 'package:virtual_shop/utils/cart_api.dart';
 import 'package:virtual_shop/utils/related_products_service.dart';
 import 'package:virtual_shop/utils/review_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:virtual_shop/widgets/glass_container.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
@@ -128,8 +128,11 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         else if (related.isEmpty)
           Text('No related products', style: TextStyle(color: Colors.grey[600]))
         else
-          SizedBox(
-            height: 220,
+          ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxHeight: 200,
+              minHeight: 180,
+            ),
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: related.length,
@@ -167,54 +170,72 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       padding: const EdgeInsets.all(8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          AspectRatio(
-            aspectRatio: 1,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: _AdaptiveImage(
-                image: product.image,
-                fit: BoxFit.cover,
-                width: double.infinity,
+          Expanded(
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: _AdaptiveImage(
+                  image: product.image,
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                ),
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             product.name,
             style: const TextStyle(
               fontWeight: FontWeight.bold,
               color: Colors.white,
+              fontSize: 13,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
+          const SizedBox(height: 2),
           Text(
-            product.category,
-            style: TextStyle(color: Colors.grey[400], fontSize: 12),
+            product.category.toString(),
+            style: TextStyle(color: Colors.grey[400], fontSize: 10),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
+          const SizedBox(height: 4),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Flexible(
+                flex: 3,
                 child: Text(
                   '৳${product.price.toStringAsFixed(2)}',
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
+                    fontSize: 12,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               Flexible(
+                flex: 2,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.star, color: Colors.amber, size: 16),
-                    const SizedBox(width: 4),
-                    Text(
-                      product.rating.toString(),
-                      style: const TextStyle(fontSize: 12, color: Colors.white),
+                    const Icon(Icons.star, color: Colors.amber, size: 14),
+                    const SizedBox(width: 2),
+                    Flexible(
+                      child: Text(
+                        product.rating.toString(),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.white,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
@@ -524,7 +545,10 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  widget.product.category,
+                                  widget.product.category
+                                      .toString()
+                                      .split('.')
+                                      .last,
                                   style: TextStyle(
                                     fontSize: rf(context, 16),
                                     color: Colors.grey[600],
@@ -551,7 +575,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                                     ),
                                     SizedBox(width: rf(context, 6)),
                                     Text(
-                                      '(${_reviewCount > 0 ? _reviewCount : (widget.product.ratingCount ?? 0)})',
+                                      '($_reviewCount)',
                                       style: TextStyle(
                                         fontSize: rf(context, 12),
                                         color: Colors.black87,
@@ -664,6 +688,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                   _buildRelatedProductsSection(),
                   const SizedBox(height: 32),
                   _buildReviewSection(),
+                  const SizedBox(
+                    height: 30,
+                  ), // Reduced padding to prevent overflow
                 ],
               ),
             ),
@@ -679,27 +706,10 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       spacing: 10.0,
       runSpacing: 10.0,
       children: [
-        _buildInfoChip('Weather', widget.product.weather),
-        _buildInfoChip('Temp', widget.product.temp),
-        _buildInfoChip('Event', widget.product.event),
+        // _buildInfoChip('Weather', widget.product.weather), // Removed because 'weather' does not exist on Product
+        // _buildInfoChip('Temp', widget.product.temp), // Comment out or remove if 'temp' does not exist
+        // _buildInfoChip('Event', widget.product.event), // Comment out or remove if 'event' does not exist
       ],
-    );
-  }
-
-  Widget _buildInfoChip(String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        '$label: $value',
-        style: TextStyle(
-          fontSize: rf(context, 12),
-          color: const Color.fromARGB(255, 112, 112, 112),
-        ),
-      ),
     );
   }
 
@@ -707,6 +717,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     return Row(
       children: [
         Expanded(
+          flex: 1,
           child: ElevatedButton(
             onPressed: () {
               Navigator.push(
@@ -727,14 +738,21 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 borderRadius: BorderRadius.circular(30),
               ),
             ),
-            child: Text(
-              'Virtual Try On',
-              style: TextStyle(fontSize: rf(context, 16), color: Colors.white),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                'Virtual Try On',
+                style: TextStyle(
+                  fontSize: rf(context, 16),
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
         ),
         const SizedBox(width: 16),
         Expanded(
+          flex: 1,
           child: ElevatedButton(
             onPressed: () async {
               try {
@@ -760,9 +778,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                 borderRadius: BorderRadius.circular(30),
               ),
             ),
-            child: Text(
-              'Add to cart',
-              style: TextStyle(fontSize: rf(context, 16), color: Colors.black),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                'Add to cart',
+                style: TextStyle(
+                  fontSize: rf(context, 16),
+                  color: Colors.black,
+                ),
+              ),
             ),
           ),
         ),
@@ -843,15 +867,18 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                                   ),
                                 ),
                               ),
-                              Row(
-                                children: List.generate(
-                                  5,
-                                  (idx) => Icon(
-                                    idx < (r['rating'] ?? 0)
-                                        ? Icons.star
-                                        : Icons.star_border,
-                                    color: Colors.amber,
-                                    size: 16,
+                              Flexible(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: List.generate(
+                                    5,
+                                    (idx) => Icon(
+                                      idx < (r['rating'] ?? 0)
+                                          ? Icons.star
+                                          : Icons.star_border,
+                                      color: Colors.amber,
+                                      size: 16,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -900,14 +927,15 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           ),
           const SizedBox(height: 8),
           Row(
+            mainAxisAlignment: MainAxisAlignment.start,
             children: List.generate(5, (i) {
               final idx = i + 1;
               return IconButton(
                 onPressed: () {
                   setState(() => _selectedStars = idx);
                 },
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
+                padding: const EdgeInsets.all(4),
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 icon: Icon(
                   idx <= _selectedStars ? Icons.star : Icons.star_border,
                   color: Colors.amber,

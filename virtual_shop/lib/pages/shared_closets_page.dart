@@ -19,15 +19,24 @@ class SharedCloset {
 final List<Product> dummyProducts = List.generate(
   15,
   (index) => Product(
+    id: 'dummy_product_$index',
+    authId: 'dummy_seller_$index',
     name: 'Product ${index + 1}',
-    image: 'assets/images/demo${(index % 5) + 1}.jpg',
-    rating: 4.5,
-    price: (1.0 * index * 10) + 20,
-    category: 'Category',
-    weather: 'Sunny',
-    temp: '25°C',
-    event: 'Casual',
     description: 'This is a description for product ${index + 1}.',
+    category: ProductCategory.values[index % ProductCategory.values.length],
+    brand: 'Brand ${(index % 3) + 1}',
+    price: (1.0 * index * 10) + 20,
+    stock: 10 + (index * 2),
+    condition: ProductCondition.values[index % ProductCondition.values.length],
+    weightKg: 0.5 + (index * 0.1),
+    dimensions: '20x30x5 cm',
+    isFeatured: index % 4 == 0,
+    isInStock: true,
+    createdAt: DateTime.now().subtract(Duration(days: index)),
+    updatedAt: DateTime.now().subtract(Duration(hours: index)),
+    image: 'assets/images/demo${(index % 5) + 1}.jpg',
+    rating: 4.0 + (index % 11) * 0.1, // Rating between 4.0 and 5.0
+    isLoved: false,
   ),
 );
 
