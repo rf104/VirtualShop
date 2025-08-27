@@ -7,6 +7,8 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:image_picker/image_picker.dart';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:pro_image_editor/designs/frosted_glass/frosted_glass.dart';
 import 'package:virtual_shop/utils/supabase_service.dart';
@@ -660,28 +662,8 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
       final Uint8List productImageBytes = await _loadImageBytes(
         _currentMainImage,
       );
-      // Try Segmind first
+      // Try Gemini first
       try {
-        final Uint8List? segmindResult = await _trySegmindVTON(
-          userImageBytes: userImageBytes,
-          productImageBytes: productImageBytes,
-          garmentDescription: widget.productName,
-        );
-        if (segmindResult != null) {
-          setState(() {
-            _virtualTryOnImage = segmindResult;
-            _isGenerating = false;
-            _error = null;
-          });
-          return;
-        }
-      } catch (e) {
-        // Segmind failed, will fall back to Gemini
-        debugPrint('Segmind failed: $e');
-      }
-      // Fallback: Gemini
-      try {
-        // ...existing code for Gemini API call...
         final String productBase64 = base64Encode(productImageBytes);
         final String userBase64 = base64Encode(userImageBytes);
         final Map<String, dynamic> payload = {
@@ -730,7 +712,7 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
               "parts": [
                 {
                   "text":
-                      "Create a single image output. Overlay the product image's apparel, accessories (if present), and visible footwear onto the user's image. The user's original pose and facial features are paramount and must not change. Maintain the product's true texture. No text, just the image.",
+                      "Visualize virtual try on. Must Make sure user weaers the product, this is must, make the user wear the product, meaning if clothes wear the clothes, if have other accessories wear them etc.",
                 },
               ],
             },
@@ -746,7 +728,7 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
         }
         final response = await http.post(
           Uri.parse(
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:streamGenerateContent?key=$apiKey',
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:streamGenerateContent?key=$apiKey',
           ),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(payload),
@@ -754,7 +736,6 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
         if (response.statusCode != 200) {
           throw Exception('API error: ${response.statusCode} ${response.body}');
         }
-        // Parse response for base64 image (PNG)
         String? imageBase64;
         final trimmedBody = response.body.trim();
         if (trimmedBody.startsWith('[') && trimmedBody.endsWith(']')) {
@@ -816,13 +797,121 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
         });
         return;
       } catch (e) {
-        setState(() {
-          _error =
-              'Failed to generate virtual try-on image (Gemini fallback). ${e.toString()}';
-          _isGenerating = false;
-        });
-        return;
+        debugPrint('Gemini generation failed: $e');
       }
+
+      // Next: try server /process_image (Ayna-1.0 via Gradio)
+      try {
+        final String baseUrl = (() {
+          final s = dotenv.env['SERVER_URL']?.trim();
+          final b = dotenv.env['BACKEND_URL']?.trim();
+          String raw = (s != null && s.isNotEmpty)
+              ? s
+              : ((b != null && b.isNotEmpty) ? b : 'http://127.0.0.1:8000');
+          raw = raw.replaceFirst(RegExp(r'^(https?://)\s+'), r'$1');
+          String url = raw.endsWith('/')
+              ? raw.substring(0, raw.length - 1)
+              : raw;
+          try {
+            if (!kIsWeb && Platform.isAndroid) {
+              final uri = Uri.parse(url);
+              if (uri.host == '127.0.0.1' || uri.host == 'localhost') {
+                url = uri
+                    .replace(host: dotenv.env['hostIp'] ?? '192.168.0.154')
+                    .toString();
+              }
+            }
+          } catch (_) {}
+          return url;
+        })();
+
+        Future<String> _ensureUrl(String name, Uint8List bytes) async {
+          if (name.startsWith('http://') || name.startsWith('https://'))
+            return name;
+          final url = await SupabaseService.uploadProfileImageBytes(
+            bytes: bytes,
+            filename: name.split('/').isNotEmpty
+                ? name.split('/').last
+                : 'image.jpg',
+            mimeType: 'image/jpeg',
+          );
+          return url;
+        }
+
+        final garmentUrl = await _ensureUrl(
+          _currentMainImage,
+          productImageBytes,
+        );
+        final personUrl = await _ensureUrl('user-photo.jpg', userImageBytes);
+        final uri = Uri.parse('$baseUrl/process_image');
+        final resp = await http.post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'garment_img_url': garmentUrl,
+            'person_img_url': personUrl,
+            'garment_type': 'full-body',
+            'sleeve_length': 'ignore',
+            'garment_length': 'ignore',
+          }),
+        );
+        if (resp.statusCode == 200) {
+          final data = jsonDecode(resp.body) as Map<String, dynamic>;
+          String? url = data['url'] as String?;
+          String? dataUri = data['data_uri'] as String?;
+          if (url != null && url.isNotEmpty) {
+            final got = await http.get(Uri.parse(url));
+            if (got.statusCode == 200 && got.bodyBytes.isNotEmpty) {
+              setState(() {
+                _virtualTryOnImage = got.bodyBytes;
+                _isGenerating = false;
+                _error = null;
+              });
+              return;
+            }
+          } else if (dataUri != null && dataUri.startsWith('data:')) {
+            try {
+              final b64 = dataUri.split(',').last;
+              final img = base64Decode(b64);
+              setState(() {
+                _virtualTryOnImage = img;
+                _isGenerating = false;
+                _error = null;
+              });
+              return;
+            } catch (_) {}
+          }
+        }
+      } catch (e) {
+        debugPrint('Server /process_image failed: $e');
+      }
+
+      // Finally: Segmind
+      try {
+        final Uint8List? segmindResult = await _trySegmindVTON(
+          userImageBytes: userImageBytes,
+          productImageBytes: productImageBytes,
+          garmentDescription: widget.productName,
+        );
+        if (segmindResult != null) {
+          setState(() {
+            _virtualTryOnImage = segmindResult;
+            _isGenerating = false;
+            _error = null;
+          });
+          return;
+        }
+      } catch (e) {
+        debugPrint('Segmind failed: $e');
+      }
+
+      // If we reach here, all providers failed
+      setState(() {
+        _error =
+            'Failed to generate virtual try-on image using Gemini, server, and Segmind.';
+        _isGenerating = false;
+      });
+      return;
     } catch (e) {
       setState(() {
         _error = 'Failed to generate virtual try-on image. ${e.toString()}';
