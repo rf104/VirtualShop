@@ -666,6 +666,55 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
       try {
         final String productBase64 = base64Encode(productImageBytes);
         final String userBase64 = base64Encode(userImageBytes);
+
+        // Small helper to extract the first PNG image from Gemini streamed/array responses
+        String? _extractGeminiPngB64(String body) {
+          final trimmedBody = body.trim();
+          if (trimmedBody.startsWith('[') && trimmedBody.endsWith(']')) {
+            try {
+              final List<dynamic> arr = jsonDecode(trimmedBody);
+              for (final jsonLine in arr) {
+                final candidates = jsonLine['candidates'] ?? [];
+                for (final candidate in candidates) {
+                  final parts = candidate['content']['parts'] ?? [];
+                  for (final part in parts) {
+                    if (part['inlineData'] != null &&
+                        part['inlineData']['mimeType'] == 'image/png') {
+                      return part['inlineData']['data'] as String?;
+                    }
+                  }
+                }
+              }
+            } catch (_) {
+              // fall through to line-by-line parsing
+            }
+          }
+          for (final line in body.split('\n')) {
+            final trimmed = line.trim();
+            if (trimmed.isEmpty ||
+                !trimmed.startsWith('{') ||
+                !trimmed.endsWith('}')) {
+              continue;
+            }
+            try {
+              final Map<String, dynamic> jsonLine = jsonDecode(trimmed);
+              final candidates = jsonLine['candidates'] ?? [];
+              for (final candidate in candidates) {
+                final parts = candidate['content']['parts'] ?? [];
+                for (final part in parts) {
+                  if (part['inlineData'] != null &&
+                      part['inlineData']['mimeType'] == 'image/png') {
+                    return part['inlineData']['data'] as String?;
+                  }
+                }
+              }
+            } catch (_) {
+              // ignore malformed chunk
+            }
+          }
+          return null;
+        }
+
         final Map<String, dynamic> payload = {
           "contents": [
             {
@@ -679,7 +728,7 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
                 },
                 {
                   "text":
-                      "this is the product image, no need to reply image, reply \"Ok\"",
+                      "This is the product image (garment/accessory). Acknowledge only with \"Ok\".",
                 },
               ],
             },
@@ -697,7 +746,7 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
                 },
                 {
                   "text":
-                      "this is the user image, no need to reply image, reply \"ok\"",
+                      "This is the person's photo. Acknowledge only with \"Ok\".",
                 },
               ],
             },
@@ -712,7 +761,7 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
               "parts": [
                 {
                   "text":
-                      "Visualize virtual try on. Must Make sure user weaers the product, this is must, make the user wear the product, meaning if clothes wear the clothes, if have other accessories wear them etc.",
+                      "You are a virtual try-on assistant. Seamlessly composite the product onto this person so it looks naturally worn/used. Match body pose and scale, preserve face, hair, skin, and background. Respect occlusions and lighting. Output an image only.",
                 },
               ],
             },
@@ -722,74 +771,73 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
             "temperature": 1,
           },
         };
+
         String? apiKey = dotenv.env['GEMINI_API_KEY'];
         if (apiKey == null || apiKey.isEmpty) {
           throw Exception('GEMINI_API_KEY not set in environment or .env');
         }
+        final endpoint =
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:streamGenerateContent?key=$apiKey';
+
         final response = await http.post(
-          Uri.parse(
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:streamGenerateContent?key=$apiKey',
-          ),
+          Uri.parse(endpoint),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(payload),
         );
         if (response.statusCode != 200) {
           throw Exception('API error: ${response.statusCode} ${response.body}');
         }
-        String? imageBase64;
-        final trimmedBody = response.body.trim();
-        if (trimmedBody.startsWith('[') && trimmedBody.endsWith(']')) {
-          try {
-            final List<dynamic> arr = jsonDecode(trimmedBody);
-            for (final jsonLine in arr) {
-              final candidates = jsonLine['candidates'] ?? [];
-              for (final candidate in candidates) {
-                final parts = candidate['content']['parts'] ?? [];
-                for (final part in parts) {
-                  if (part['inlineData'] != null &&
-                      part['inlineData']['mimeType'] == 'image/png') {
-                    imageBase64 = part['inlineData']['data'];
-                    break;
-                  }
-                }
-              }
-              if (imageBase64 != null) break;
-            }
-          } catch (e) {
-            throw Exception('Failed to parse JSON array response: $e');
-          }
-        } else {
-          final lines = response.body.split('\n');
-          for (final line in lines) {
-            final trimmed = line.trim();
-            if (trimmed.isEmpty ||
-                !trimmed.startsWith('{') ||
-                !trimmed.endsWith('}')) {
-              continue;
-            }
-            try {
-              final Map<String, dynamic> jsonLine = jsonDecode(trimmed);
-              final candidates = jsonLine['candidates'] ?? [];
-              for (final candidate in candidates) {
-                final parts = candidate['content']['parts'] ?? [];
-                for (final part in parts) {
-                  if (part['inlineData'] != null &&
-                      part['inlineData']['mimeType'] == 'image/png') {
-                    imageBase64 = part['inlineData']['data'];
-                    break;
-                  }
-                }
-              }
-              if (imageBase64 != null) break;
-            } catch (_) {
-              continue;
-            }
-          }
-        }
+
+        String? imageBase64 = _extractGeminiPngB64(response.body);
         if (imageBase64 == null) {
           throw Exception('No image found in response.');
         }
-        final Uint8List resultImage = base64Decode(imageBase64);
+
+        // First-pass result
+        Uint8List resultImage = base64Decode(imageBase64);
+
+        // Second pass: refine with explicit instruction as requested.
+        // "Make sure this person wear or using the product"
+        try {
+          final String firstPassB64 = base64Encode(resultImage);
+          final Map<String, dynamic> refinePayload = {
+            "contents": [
+              {
+                "role": "user",
+                "parts": [
+                  {
+                    "inlineData": {
+                      "mimeType": "image/png",
+                      "data": firstPassB64,
+                    },
+                  },
+                  {"text": "Make sure this person wear or using the product"},
+                ],
+              },
+            ],
+            "generationConfig": {
+              "responseModalities": ["IMAGE", "TEXT"],
+              "temperature": 1,
+            },
+          };
+
+          final refineResp = await http.post(
+            Uri.parse(endpoint),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(refinePayload),
+          );
+
+          if (refineResp.statusCode == 200) {
+            final String? refinedB64 = _extractGeminiPngB64(refineResp.body);
+            if (refinedB64 != null) {
+              resultImage = base64Decode(refinedB64);
+            }
+          }
+        } catch (e) {
+          debugPrint('Gemini refine request failed: $e');
+          // Fall back to the first-pass image if refinement fails
+        }
+
         setState(() {
           _virtualTryOnImage = resultImage;
           _isGenerating = false;
