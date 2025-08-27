@@ -110,7 +110,7 @@ class _EditProductPageState extends State<EditProductPage> {
 
   Future<void> _pickImages() async {
     try {
-      final List<XFile>? images = await _picker.pickMultiImage();
+      final List<XFile> images = await _picker.pickMultiImage();
       if (images != null && images.isNotEmpty) {
         setState(() {
           for (var image in images) {

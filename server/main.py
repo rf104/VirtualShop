@@ -3,6 +3,8 @@ import io
 import uuid
 import os
 import tempfile
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi import Header
@@ -443,29 +445,216 @@ def add_to_cart(payload: dict, authorization: str | None = Header(default=None))
         raise HTTPException(status_code=400, detail=str(e))
 
 
+# @app.post("/cart/checkout")
+# def checkout(authorization: str | None = Header(default=None)):
+#     if not authorization or not authorization.lower().startswith("bearer "):
+#         raise HTTPException(
+#             status_code=401, detail="Missing Authorization bearer token")
+#     try:
+#         base = os.environ.get("SUPABASE_URL")
+#         anon = os.environ.get("SUPABASE_ANON_KEY")
+#         if not base or not anon:
+#             raise HTTPException(
+#                 status_code=500, detail="SUPABASE_URL/ANON_KEY missing on server")
+#         url = base.rstrip("/") + "/rest/v1/rpc/checkout_self"
+#         headers = {
+#             "apikey": anon,
+#             "Authorization": authorization,
+#         }
+#         with httpx.Client(timeout=30.0) as s:
+#             r = s.post(url, headers=headers)
+#         if r.status_code >= 400:
+#             raise HTTPException(status_code=r.status_code, detail=r.text)
+#         return r.json()
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=str(e))
+
+# /cart/checkout endpoint (handles multi-shop checkout)
+
 @app.post("/cart/checkout")
 def checkout(authorization: str | None = Header(default=None)):
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(
-            status_code=401, detail="Missing Authorization bearer token")
+        raise HTTPException(status_code=401, detail="Missing Authorization bearer token")
+
+    base = os.environ.get("SUPABASE_URL")
+    anon = os.environ.get("SUPABASE_ANON_KEY")
+    if not base or not anon:
+        raise HTTPException(status_code=500, detail="SUPABASE_URL/ANON_KEY missing on server")
+
+    rpc_url = base.rstrip("/") + "/rest/v1/rpc/checkout_self"
+    headers = {"apikey": anon, "Authorization": authorization}
+
+    # 1) call checkout RPC
     try:
-        base = os.environ.get("SUPABASE_URL")
-        anon = os.environ.get("SUPABASE_ANON_KEY")
-        if not base or not anon:
-            raise HTTPException(
-                status_code=500, detail="SUPABASE_URL/ANON_KEY missing on server")
-        url = base.rstrip("/") + "/rest/v1/rpc/checkout_self"
-        headers = {
-            "apikey": anon,
-            "Authorization": authorization,
-        }
         with httpx.Client(timeout=30.0) as s:
-            r = s.post(url, headers=headers)
-        if r.status_code >= 400:
-            raise HTTPException(status_code=r.status_code, detail=r.text)
-        return r.json()
+            r = s.post(rpc_url, headers=headers)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=f"RPC call failed: {e}")
+
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail=f"Checkout RPC error: {r.text}")
+
+    try:
+        checkout_resp = r.json()
+    except ValueError:
+        raise HTTPException(status_code=500, detail=f"Invalid JSON from checkout RPC: {r.text}")
+
+    # normalize into a list of shop-orders (orders may already be per-shop)
+    if isinstance(checkout_resp, dict):
+        orders = [checkout_resp]
+    elif isinstance(checkout_resp, list):
+        orders = checkout_resp
+    else:
+        orders = [checkout_resp]
+
+    # build payments payload for each returned order (extract order_id, shop info, amount)
+    payments_payload_by_order = []
+    skipped = []
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    total_amount = Decimal("0.00")
+
+    for o in orders:
+        if not isinstance(o, dict):
+            skipped.append(o)
+            continue
+
+        # Try common id/amount keys
+        order_id = o.get("id") or o.get("order_id") or o.get("orderId")
+        amount = (o.get("total") or o.get("amount") or o.get("grand_total")
+                  or o.get("total_amount") or o.get("gross_price"))
+        shop_id = o.get("shop_id") or o.get("seller_id") or o.get("vendor_id")  # optional, if returned
+
+        if not order_id:
+            skipped.append(o)
+            continue
+
+        try:
+            if amount is None:
+                amt = Decimal("0.00")
+            else:
+                amt = Decimal(str(amount))
+        except (InvalidOperation, TypeError):
+            amt = Decimal("0.00")
+
+        total_amount += amt
+
+        payments_payload_by_order.append({
+            "order_id": order_id,
+            "payer_auth_id": None,               # fill if you decode JWT or have user id
+            "amount": str(amt),
+            "payment_method": "unknown",
+            "payment_status": "completed",
+            "transaction_id": str(uuid.uuid4()),
+            "paid_at": now_iso,
+            # optional metadata to help debugging / bookkeeping
+            "meta_shop_id": shop_id
+        })
+
+    # If nothing to do
+    if not payments_payload_by_order:
+        return {
+            "checkout": checkout_resp,
+            "payments": {"inserted": [], "skipped": skipped, "note": "no valid order ids returned"}
+        }
+
+    # --- OPTION B: try to create a master (parent) order and attach payments to that master id ---
+    # This creates a single top-level order record (id = master_order_id) so all payments reference same order_id.
+    # If creation of the master order fails (schema/constraints/RLS), we fall back to Option A (per-shop payments).
+    master_order_id = str(uuid.uuid4())
+    master_order_payload = {
+        "id": master_order_id,
+        # best-effort minimal fields; adjust according to your orders schema
+        "created_at": now_iso,
+        "order_status": "grouped",  # if your orders table does not have this column, insertion may fail
+        # optionally include totals for bookkeeping
+        "total_amount": str(total_amount) if total_amount is not None else None
+    }
+
+    orders_url = base.rstrip("/") + "/rest/v1/orders"
+    insert_headers = {
+        "apikey": anon,
+        "Authorization": authorization,
+        "Content-Type": "application/json",
+        "Prefer": "return=minimal",
+    }
+
+    master_created = False
+    try:
+        with httpx.Client(timeout=30.0) as s:
+            # try creating the master order
+            mo_r = s.post(orders_url, headers=insert_headers, json=master_order_payload)
+    except Exception as e:
+        # network/timeout while creating master order -> fallback to Option A
+        mo_r = None
+
+    if mo_r and mo_r.status_code < 300:
+        master_created = True
+    else:
+        # If Supabase returned an error, we capture it for debug but keep going with Option A
+        master_err = mo_r.text if mo_r is not None else "no-response"
+        master_created = False
+
+    payments_url = base.rstrip("/") + "/rest/v1/payments"
+    insert_headers["Prefer"] = "return=representation"
+
+    if master_created:
+        # prepare payments payload: reference master_order_id for all payments (single order id for whole checkout)
+        payments_payload = []
+        for p in payments_payload_by_order:
+            payments_payload.append({
+                "order_id": master_order_id,
+                "payer_auth_id": p["payer_auth_id"],
+                "amount": p["amount"],
+                "payment_method": p["payment_method"],
+                "payment_status": p["payment_status"],
+                "transaction_id": p["transaction_id"],
+                "paid_at": p["paid_at"],
+            })
+        used_path = "grouped_master_order"
+    else:
+        # fallback: create a payment row per returned order (keeps order_id as each shop-order's id)
+        payments_payload = [
+            {
+                "order_id": p["order_id"],
+                "payer_auth_id": p["payer_auth_id"],
+                "amount": p["amount"],
+                "payment_method": p["payment_method"],
+                "payment_status": p["payment_status"],
+                "transaction_id": p["transaction_id"],
+                "paid_at": p["paid_at"],
+            }
+            for p in payments_payload_by_order
+        ]
+        used_path = "per_shop_orders"
+    
+    # Insert payments
+    try:
+        with httpx.Client(timeout=30.0) as s:
+            p_r = s.post(payments_url, headers=insert_headers, json=payments_payload)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Payments insert failed: {e}")
+
+    if p_r.status_code >= 400:
+        # show Supabase body so you can debug RLS/constraint issues
+        raise HTTPException(status_code=p_r.status_code, detail=f"Payments insert error: {p_r.text}")
+
+    try:
+        payments_result = p_r.json()
+    except ValueError:
+        payments_result = p_r.text
+
+    response = {
+        "checkout": checkout_resp,
+        "payments": {
+            "inserted": payments_result,
+            "path": used_path,
+            "master_order_id": master_order_id if master_created else None,
+            "master_creation_error": (master_err if not master_created else None),
+            "skipped": skipped
+        }
+    }
+    return response
+
 
 
 @app.get("/suggest")

@@ -315,8 +315,8 @@ class _FilterChip extends StatelessWidget {
     required this.label,
     required this.isSelected,
     required this.onTap,
-    Key? key,
-  }) : super(key: key);
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -360,8 +360,9 @@ class _ProductCard extends StatelessWidget {
 
   // Helper to get stock color based on actual stock
   Color _getStockColor(Product product) {
-    if (!product.isInStock || product.stock == 0)
+    if (!product.isInStock || product.stock == 0) {
       return const Color(0xffE53E3E); // Red
+    }
     if (product.stock <= 10) return const Color(0xffED8936); // Orange
     return const Color(0xff38A169); // Green
   }

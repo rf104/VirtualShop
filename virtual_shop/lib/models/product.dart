@@ -64,7 +64,7 @@ class Product {
   // Factory constructor to create a Product from a JSON map (from your API)
   factory Product.fromJson(Map<String, dynamic> json) {
     // Helper to parse category string to enum
-    ProductCategory _parseCategory(String categoryStr) {
+    ProductCategory parseCategory(String categoryStr) {
       switch (categoryStr.toLowerCase()) {
         case 'cozy wear':
           return ProductCategory.cozyWear;
@@ -81,7 +81,7 @@ class Product {
     }
 
     // Helper to parse condition string to enum
-    ProductCondition _parseCondition(String conditionStr) {
+    ProductCondition parseCondition(String conditionStr) {
       switch (conditionStr.toLowerCase()) {
         case 'new':
           return ProductCondition.newCondition;
@@ -100,11 +100,11 @@ class Product {
       authId: json['auth_id'],
       name: json['name'],
       description: json['description'],
-      category: _parseCategory(json['category']),
+      category: parseCategory(json['category']),
       brand: json['brand'],
       price: (json['price'] as num).toDouble(),
       stock: json['stock'],
-      condition: _parseCondition(json['condition']),
+      condition: parseCondition(json['condition']),
       weightKg: (json['weight_kg'] as num?)?.toDouble(),
       dimensions: json['dimensions'],
       isFeatured: json['is_featured'],

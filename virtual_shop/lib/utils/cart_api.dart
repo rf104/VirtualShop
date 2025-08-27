@@ -20,7 +20,9 @@ class CartApi {
       if (!kIsWeb && Platform.isAndroid) {
         final uri = Uri.parse(url);
         if (uri.host == '127.0.0.1' || uri.host == 'localhost') {
-          url = uri.replace(host: '0.154').toString();
+          url = uri
+              .replace(host: dotenv.env['hostIp'] ?? '192.168.0.154')
+              .toString();
         }
       }
     } catch (_) {}
@@ -84,3 +86,4 @@ class CartApi {
     throw Exception('Checkout failed: ${resp.statusCode} ${resp.body}');
   }
 }
+
