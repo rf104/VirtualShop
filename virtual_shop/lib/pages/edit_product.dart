@@ -81,16 +81,27 @@ class _EditProductPageState extends State<EditProductPage> {
 
   String _categoryToString(ProductCategory c) {
     switch (c) {
-      case ProductCategory.cozyWear:
-        return 'Cozy Wear';
-      case ProductCategory.footwear:
-        return 'Footwear';
-      case ProductCategory.formalWear:
-        return 'Formal Wear';
-      case ProductCategory.regularWear:
-        return 'Regular Wear';
+      case ProductCategory.electronics:
+        return 'Electronics';
+      case ProductCategory.fashion:
+        return 'Fashion';
+      case ProductCategory.homeAndGarden:
+        return 'Home & Garden';
+      case ProductCategory.sports:
+        return 'Sports';
+      case ProductCategory.books:
+        return 'Books';
+      case ProductCategory.toys:
+        return 'Toys';
+      case ProductCategory.beauty:
+        return 'Beauty';
+      case ProductCategory.automotive:
+        return 'Automotive';
+      case ProductCategory.health:
+        return 'Health';
+      case ProductCategory.foodAndBeverages:
+        return 'Food & Beverages';
       case ProductCategory.unspecified:
-      default:
         return 'Unspecified';
     }
   }
@@ -103,15 +114,13 @@ class _EditProductPageState extends State<EditProductPage> {
         return 'Used';
       case ProductCondition.refurbished:
         return 'Refurbished';
-      default:
-        return 'New';
     }
   }
 
   Future<void> _pickImages() async {
     try {
       final List<XFile> images = await _picker.pickMultiImage();
-      if (images != null && images.isNotEmpty) {
+      if (images.isNotEmpty) {
         setState(() {
           for (var image in images) {
             if (_selectedImages.length < 5) {

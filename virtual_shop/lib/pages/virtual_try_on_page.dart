@@ -13,6 +13,7 @@ import 'package:pro_image_editor/pro_image_editor.dart';
 import 'package:pro_image_editor/designs/frosted_glass/frosted_glass.dart';
 import 'package:virtual_shop/utils/supabase_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 // import 'package:firebase_ai/firebase_ai.dart';
 
 // Custom widget for virtual try-on image picking
@@ -253,6 +254,139 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
     return null;
   }
 
+  // Helper to try LightX AI Virtual Try-On API
+  Future<Uint8List?> _tryLightXVirtualTryOn({
+    required Uint8List userImageBytes,
+    required Uint8List productImageBytes,
+    required String garmentName,
+    required String currentMainImagePath,
+  }) async {
+    try {
+      final String? apiKey = dotenv.env['LIGHTX_API_KEY'];
+      if (apiKey == null || apiKey.isEmpty) {
+        debugPrint('LightX: API key missing, skipping.');
+        return null;
+      }
+
+      // Ensure remote URLs (upload to Supabase if local asset)
+      Future<String> ensureRemoteUrl(String name, Uint8List bytes) async {
+        if (name.startsWith('http://') || name.startsWith('https://'))
+          return name;
+        return await SupabaseService.uploadProfileImageBytes(
+          bytes: bytes,
+          filename: name.split('/').isNotEmpty
+              ? name.split('/').last
+              : 'image.jpg',
+          mimeType: 'image/jpeg',
+        );
+      }
+
+      final garmentUrl = await ensureRemoteUrl(
+        currentMainImagePath,
+        productImageBytes,
+      );
+      // Always upload user image (not an asset path but raw bytes)
+      final userUrl = await SupabaseService.uploadProfileImageBytes(
+        bytes: userImageBytes,
+        filename: 'user_vton_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        mimeType: 'image/jpeg',
+      );
+
+      // Submit job
+      final submitResp = await http.post(
+        Uri.parse(
+          'https://api.lightxeditor.com/external/api/v2/aivirtualtryon',
+        ),
+        headers: {'Content-Type': 'application/json', 'x-api-key': apiKey},
+        body: jsonEncode({
+          'imageUrl': userUrl, // person image
+          // LightX expects styleImageUrl to be garment/product image
+          'styleImageUrl': garmentUrl,
+        }),
+      );
+
+      if (submitResp.statusCode != 200) {
+        debugPrint(
+          'LightX submit failed: ${submitResp.statusCode} ${submitResp.body}',
+        );
+        return null;
+      }
+      Map<String, dynamic> submitJson;
+      try {
+        submitJson = jsonDecode(submitResp.body) as Map<String, dynamic>;
+      } catch (e) {
+        debugPrint('LightX submit decode failed: $e');
+        return null;
+      }
+      final body = submitJson['body'] as Map<String, dynamic>?;
+      final orderId = body != null ? body['orderId']?.toString() : null;
+      if (orderId == null || orderId.isEmpty) {
+        debugPrint('LightX: No orderId returned.');
+        return null;
+      }
+      final int maxRetriesAllowed = (body?['maxRetriesAllowed'] is int)
+          ? body!['maxRetriesAllowed'] as int
+          : 8;
+      final int avgResponseTimeInSec = (body?['avgResponseTimeInSec'] is int)
+          ? body!['avgResponseTimeInSec'] as int
+          : 20;
+
+      // Poll order status
+      final Uri statusUri = Uri.parse(
+        'https://api.lightxeditor.com/external/api/v2/order-status',
+      );
+      Uint8List? finalBytes;
+      for (int attempt = 0; attempt < maxRetriesAllowed; attempt++) {
+        await Future.delayed(
+          Duration(
+            seconds: attempt == 0 ? 2 : math.min(avgResponseTimeInSec, 25),
+          ),
+        );
+        final statusResp = await http.post(
+          statusUri,
+          headers: {'Content-Type': 'application/json', 'x-api-key': apiKey},
+          body: jsonEncode({'orderId': orderId}),
+        );
+        if (statusResp.statusCode != 200) {
+          debugPrint(
+            'LightX status check failed: ${statusResp.statusCode} ${statusResp.body}',
+          );
+          continue;
+        }
+        Map<String, dynamic> statusJson;
+        try {
+          statusJson = jsonDecode(statusResp.body) as Map<String, dynamic>;
+        } catch (e) {
+          debugPrint('LightX status decode failed: $e');
+          continue;
+        }
+        final sBody = statusJson['body'] as Map<String, dynamic>?;
+        final status = sBody != null ? sBody['status']?.toString() : null;
+        if (status == null) continue;
+        debugPrint('LightX order $orderId status: $status');
+        if (status.toLowerCase() == 'active') {
+          final outputUrl = sBody?['output']?.toString();
+          if (outputUrl != null && outputUrl.startsWith('http')) {
+            final outResp = await http.get(Uri.parse(outputUrl));
+            if (outResp.statusCode == 200 && outResp.bodyBytes.isNotEmpty) {
+              finalBytes = outResp.bodyBytes;
+              break;
+            }
+          }
+          break;
+        } else if (status.toLowerCase() == 'failed' ||
+            status.toLowerCase() == 'error') {
+          debugPrint('LightX order failed.');
+          break;
+        }
+      }
+      return finalBytes;
+    } catch (e) {
+      debugPrint('LightX try-on exception: $e');
+      return null;
+    }
+  }
+
   late final List<Map<String, String>> _productViewsWithSizes;
   late String _currentMainImage;
   int _selectedThumbnailIndex = 0;
@@ -270,6 +404,7 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
     _productViewsWithSizes = [];
     _currentMainImage = widget.productImage;
     _fetchProductImages();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowTryOnHint());
   }
 
   Future<void> _fetchProductImages() async {
@@ -321,6 +456,7 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
   }
 
   void _cycleMainImage() {
+    debugPrint(_productViewsWithSizes.length.toString());
     if (_productViewsWithSizes.length < 2) return;
     setState(() {
       _selectedThumbnailIndex =
@@ -356,14 +492,36 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
         ),
         centerTitle: true,
         actions: [
-          IconButton(
-            icon: Icon(Symbols.auto_awesome, color: Colors.black),
-            onPressed: _onGeminiPressed,
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: Tooltip(
+              message: 'Try-On with AI (Gemini) — tap to start',
+              child: TextButton.icon(
+                onPressed: _onGeminiPressed,
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  shape: const StadiumBorder(),
+                  visualDensity: VisualDensity.compact,
+                  minimumSize: const Size(0, 36),
+                ),
+                icon: Icon(Symbols.auto_awesome, color: Colors.amberAccent),
+                label: const Text(
+                  'Try-On AI',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
           ),
         ],
       ),
       body: Column(
         children: [
+          if (_isGenerating) const LinearProgressIndicator(minHeight: 3),
           const SizedBox(height: 20),
           if (_userImage != null &&
               (_isGenerating || _virtualTryOnImage != null || _error != null))
@@ -542,6 +700,24 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
     );
   }
 
+  Future<void> _maybeShowTryOnHint() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      const key = 'vton_tryon_hint_shown';
+      if (prefs.getBool(key) == true) return;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Tip: Tap "Try-On AI" to upload your photo'),
+          duration: const Duration(seconds: 4),
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(label: 'Try-On', onPressed: _onGeminiPressed),
+        ),
+      );
+      await prefs.setBool(key, true);
+    } catch (_) {}
+  }
+
   Widget _buildThumb(String src) {
     final isNet = src.startsWith('http://') || src.startsWith('https://');
     if (isNet) {
@@ -618,6 +794,17 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
   }
 
   void _onGeminiPressed() async {
+    // Immediate feedback that the try-on flow is starting
+    try {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('AI Try-On: upload or capture a photo to begin'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (_) {}
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -657,6 +844,17 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
       _error = null;
       _virtualTryOnImage = null;
     });
+    // Brief status cue while contacting providers
+    try {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Compositing with AI… This can take ~20 seconds'),
+          duration: Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (_) {}
     try {
       // Load selected product image (asset or network) as bytes
       final Uint8List productImageBytes = await _loadImageBytes(
@@ -667,29 +865,136 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
         final String productBase64 = base64Encode(productImageBytes);
         final String userBase64 = base64Encode(userImageBytes);
 
-        // Small helper to extract the first PNG image from Gemini streamed/array responses
-        String? _extractGeminiPngB64(String body) {
-          final trimmedBody = body.trim();
-          if (trimmedBody.startsWith('[') && trimmedBody.endsWith(']')) {
-            try {
-              final List<dynamic> arr = jsonDecode(trimmedBody);
-              for (final jsonLine in arr) {
-                final candidates = jsonLine['candidates'] ?? [];
-                for (final candidate in candidates) {
-                  final parts = candidate['content']['parts'] ?? [];
-                  for (final part in parts) {
-                    if (part['inlineData'] != null &&
-                        part['inlineData']['mimeType'] == 'image/png') {
-                      return part['inlineData']['data'] as String?;
-                    }
-                  }
-                }
+        // System instruction: drive the model towards a single composite image output.
+        final Map<String, dynamic> payload = {
+          "systemInstruction": {
+            "parts": [
+              {
+                "text":
+                    "You are a virtual try-on compositor. Your task is to make the person in the user image wear the garment from the product image. Requirements:\n"
+                    "- Output exactly one image. No text or captions.\n"
+                    "- Keep the person's identity, skin tone, pose, body shape, and original background intact unless occluded by the garment.\n"
+                    "- Align and fit the garment naturally to the body, respecting perspective, wrinkles, and lighting; preserve garment colors, logos, and textures.\n"
+                    "- Avoid adding or removing unrelated accessories. Avoid artifacts and hallucinations.\n"
+                    "- If parts are occluded, blend realistically. If needed, slightly adjust garment to fit but do not change its design.",
+              },
+            ],
+          },
+          "contents": [
+            {
+              "role": "user",
+              "parts": [
+                {"text": "Here is the product image:"},
+                {
+                  "inlineData": {
+                    "mimeType": "image/jpeg",
+                    "data": productBase64,
+                  },
+                },
+              ],
+            },
+            {
+              "role": "model",
+              "parts": [
+                {"text": "Understood, I have the product image."},
+              ],
+            },
+            {
+              "role": "user",
+              "parts": [
+                {"text": "Here is the person image:"},
+                {
+                  "inlineData": {"mimeType": "image/jpeg", "data": userBase64},
+                },
+              ],
+            },
+            {
+              "role": "model",
+              "parts": [
+                {"text": "Understood, I have the person image."},
+              ],
+            },
+            {
+              "role": "user",
+              "parts": [
+                {
+                  "text":
+                      "Detailed instructions: Compose a single, realistic try-on image showing the person wearing the garment. Respond with the image only. Make sure that the person is wearing the garment correctly.",
+                },
+              ],
+            },
+            {
+              "role": "model",
+              "parts": [
+                {"text": "Acknowledged, ready to proceed."},
+              ],
+            },
+            {
+              "role": "user",
+              "parts": [
+                {"text": "Do it then"},
+              ],
+            },
+          ],
+          "generationConfig": {
+            "responseModalities": ["IMAGE"],
+            "temperature": 0.5,
+            "topP": 0.9,
+            "topK": 32,
+            "candidateCount": 1,
+          },
+        };
+
+        final String? apiKey = dotenv.env['GEMINI_API_KEY'];
+        if (apiKey == null || apiKey.isEmpty) {
+          throw Exception('GEMINI_API_KEY not set in environment or .env');
+        }
+        final response = await http.post(
+          Uri.parse(
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:streamGenerateContent?key=$apiKey',
+          ),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(payload),
+        );
+        if (response.statusCode != 200) {
+          throw Exception('API error: ${response.statusCode} ${response.body}');
+        }
+        // More robust parsing: accept image/png and image/jpeg, and both inlineData/inline_data keys.
+        String? imageBase64;
+        String? _extractImageB64FromParts(dynamic parts) {
+          for (final part in parts) {
+            final inline = part['inlineData'] ?? part['inline_data'];
+            if (inline != null) {
+              final mime = (inline['mimeType'] ?? inline['mime_type'])
+                  ?.toString();
+              if (mime == 'image/png' || mime == 'image/jpeg') {
+                final data = inline['data']?.toString();
+                if (data != null && data.isNotEmpty) return data;
               }
-            } catch (_) {
-              // fall through to line-by-line parsing
             }
           }
-          for (final line in body.split('\n')) {
+          return null;
+        }
+
+        final trimmedBody = response.body.trim();
+        if (trimmedBody.startsWith('[') && trimmedBody.endsWith(']')) {
+          try {
+            final List<dynamic> arr = jsonDecode(trimmedBody);
+            for (final jsonLine in arr) {
+              final candidates = jsonLine['candidates'] ?? [];
+              for (final candidate in candidates) {
+                final parts = candidate['content']?['parts'] ?? [];
+                imageBase64 = _extractImageB64FromParts(parts);
+                if (imageBase64 != null) break;
+              }
+              if (imageBase64 != null) break;
+            }
+          } catch (e) {
+            throw Exception('Failed to parse JSON array response: $e');
+          }
+        } else {
+          final lines = response.body.split('\n');
+          for (final line in lines) {
             final trimmed = line.trim();
             if (trimmed.isEmpty ||
                 !trimmed.startsWith('{') ||
@@ -700,155 +1005,55 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
               final Map<String, dynamic> jsonLine = jsonDecode(trimmed);
               final candidates = jsonLine['candidates'] ?? [];
               for (final candidate in candidates) {
-                final parts = candidate['content']['parts'] ?? [];
-                for (final part in parts) {
-                  if (part['inlineData'] != null &&
-                      part['inlineData']['mimeType'] == 'image/png') {
-                    return part['inlineData']['data'] as String?;
-                  }
-                }
+                final parts = candidate['content']?['parts'] ?? [];
+                imageBase64 = _extractImageB64FromParts(parts);
+                if (imageBase64 != null) break;
               }
+              if (imageBase64 != null) break;
             } catch (_) {
-              // ignore malformed chunk
+              continue;
             }
           }
-          return null;
         }
 
-        final Map<String, dynamic> payload = {
-          "contents": [
-            {
-              "role": "user",
-              "parts": [
-                {
-                  "inlineData": {
-                    "mimeType": "image/jpeg",
-                    "data": productBase64,
-                  },
-                },
-                {
-                  "text":
-                      "This is the product image (garment/accessory). Acknowledge only with \"Ok\".",
-                },
-              ],
-            },
-            {
-              "role": "model",
-              "parts": [
-                {"text": "Ok"},
-              ],
-            },
-            {
-              "role": "user",
-              "parts": [
-                {
-                  "inlineData": {"mimeType": "image/jpeg", "data": userBase64},
-                },
-                {
-                  "text":
-                      "This is the person's photo. Acknowledge only with \"Ok\".",
-                },
-              ],
-            },
-            {
-              "role": "model",
-              "parts": [
-                {"text": "Ok"},
-              ],
-            },
-            {
-              "role": "user",
-              "parts": [
-                {
-                  "text":
-                      "You are a virtual try-on assistant. Seamlessly composite the product onto this person so it looks naturally worn/used. Match body pose and scale, preserve face, hair, skin, and background. Respect occlusions and lighting. Output an image only.",
-                },
-              ],
-            },
-          ],
-          "generationConfig": {
-            "responseModalities": ["IMAGE", "TEXT"],
-            "temperature": 1,
-          },
-        };
-
-        String? apiKey = dotenv.env['GEMINI_API_KEY'];
-        if (apiKey == null || apiKey.isEmpty) {
-          throw Exception('GEMINI_API_KEY not set in environment or .env');
-        }
-        final endpoint =
-            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:streamGenerateContent?key=$apiKey';
-
-        final response = await http.post(
-          Uri.parse(endpoint),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(payload),
-        );
-        if (response.statusCode != 200) {
-          throw Exception('API error: ${response.statusCode} ${response.body}');
-        }
-
-        String? imageBase64 = _extractGeminiPngB64(response.body);
         if (imageBase64 == null) {
           throw Exception('No image found in response.');
         }
-
-        // First-pass result
-        Uint8List resultImage = base64Decode(imageBase64);
-
-        // Second pass: refine with explicit instruction as requested.
-        // "Make sure this person wear or using the product"
-        try {
-          final String firstPassB64 = base64Encode(resultImage);
-          final Map<String, dynamic> refinePayload = {
-            "contents": [
-              {
-                "role": "user",
-                "parts": [
-                  {
-                    "inlineData": {
-                      "mimeType": "image/png",
-                      "data": firstPassB64,
-                    },
-                  },
-                  {"text": "Make sure this person wear or using the product"},
-                ],
-              },
-            ],
-            "generationConfig": {
-              "responseModalities": ["IMAGE", "TEXT"],
-              "temperature": 1,
-            },
-          };
-
-          final refineResp = await http.post(
-            Uri.parse(endpoint),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(refinePayload),
-          );
-
-          if (refineResp.statusCode == 200) {
-            final String? refinedB64 = _extractGeminiPngB64(refineResp.body);
-            if (refinedB64 != null) {
-              resultImage = base64Decode(refinedB64);
-            }
-          }
-        } catch (e) {
-          debugPrint('Gemini refine request failed: $e');
-          // Fall back to the first-pass image if refinement fails
-        }
-
+        final Uint8List resultImage = base64Decode(imageBase64);
         setState(() {
           _virtualTryOnImage = resultImage;
           _isGenerating = false;
           _error = null;
         });
+        debugPrint('Gemini generation succeeded.');
         return;
       } catch (e) {
         debugPrint('Gemini generation failed: $e');
       }
 
       // Next: try server /process_image (Ayna-1.0 via Gradio)
+      // Before server fallback, try LightX API
+      try {
+        final Uint8List? lightXResult = await _tryLightXVirtualTryOn(
+          userImageBytes: userImageBytes,
+          productImageBytes: productImageBytes,
+          garmentName: widget.productName,
+          currentMainImagePath: _currentMainImage,
+        );
+        if (lightXResult != null) {
+          setState(() {
+            _virtualTryOnImage = lightXResult;
+            _isGenerating = false;
+            _error = null;
+          });
+          debugPrint('LightX generation succeeded.');
+          return;
+        }
+      } catch (e) {
+        debugPrint('LightX generation failed: $e');
+      }
+
+      // Next fallback: server /process_image (Ayna-1.0 via Gradio)
       try {
         final String baseUrl = (() {
           final s = dotenv.env['SERVER_URL']?.trim();
@@ -896,11 +1101,18 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
           uri,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
+            // Updated parameters per new /process_image API
             'garment_img_url': garmentUrl,
             'person_img_url': personUrl,
-            'garment_type': 'full-body',
-            'sleeve_length': 'ignore',
-            'garment_length': 'ignore',
+            // Short textual description used by model; fall back to product name
+            'garment_des': widget.productName.isNotEmpty
+                ? widget.productName
+                : 'garment',
+            // Keep defaults explicit for clarity / future tuning
+            'is_checked': true,
+            'is_checked_crop': false,
+            'denoise_steps': 30,
+            'seed': 42,
           }),
         );
         if (resp.statusCode == 200) {

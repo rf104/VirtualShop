@@ -603,14 +603,30 @@ class _ProductCard extends StatelessWidget {
 // Helper function to get category icon - updated to work with Product enum
 IconData _getCategoryIcon(String? category) {
   switch (category?.toLowerCase()) {
-    case 'cozywear':
-      return Icons.emoji_people;
-    case 'footwear':
-      return Icons.directions_walk;
-    case 'formalwear':
+    case 'electronics':
+      return Icons.devices_other;
+    case 'fashion':
       return Icons.checkroom;
-    case 'regularwear':
-      return Icons.style;
+    case 'homeandgarden':
+    case 'home_and_garden':
+    case 'home & garden':
+      return Icons.home_outlined;
+    case 'sports':
+      return Icons.sports_soccer;
+    case 'books':
+      return Icons.menu_book_outlined;
+    case 'toys':
+      return Icons.toys_outlined;
+    case 'beauty':
+      return Icons.brush_outlined;
+    case 'automotive':
+      return Icons.directions_car_filled_outlined;
+    case 'health':
+      return Icons.favorite_border;
+    case 'foodandbeverages':
+    case 'food_and_beverages':
+    case 'food & beverages':
+      return Icons.restaurant_menu;
     default:
       return Icons.shopping_bag;
   }

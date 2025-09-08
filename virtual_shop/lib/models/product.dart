@@ -1,12 +1,19 @@
 // lib/models/product.dart
 // (Assuming this file exists or you'll create it)
 
+import 'package:flutter/material.dart';
+
 enum ProductCategory {
-  cozyWear,
-  footwear,
-  formalWear,
-  regularWear,
-  // Add other categories from your `public.product_category` enum
+  electronics,
+  fashion,
+  homeAndGarden,
+  sports,
+  books,
+  toys,
+  beauty,
+  automotive,
+  health,
+  foodAndBeverages,
   unspecified,
 }
 
@@ -65,16 +72,33 @@ class Product {
   factory Product.fromJson(Map<String, dynamic> json) {
     // Helper to parse category string to enum
     ProductCategory parseCategory(String categoryStr) {
-      switch (categoryStr.toLowerCase()) {
-        case 'cozy wear':
-          return ProductCategory.cozyWear;
-        case 'footwear':
-          return ProductCategory.footwear;
-        case 'formal wear':
-          return ProductCategory.formalWear;
-        case 'regular wear':
-          return ProductCategory.regularWear;
-        // Add more cases as per your product_category enum in Supabase
+      debugPrint('Parsing category: $categoryStr');
+      final normalized = categoryStr
+          .toLowerCase()
+          .replaceAll('&', 'and')
+          .replaceAll(RegExp(r'[^a-z]'), '');
+      switch (normalized) {
+        case 'electronics':
+          return ProductCategory.electronics;
+        case 'fashion':
+          return ProductCategory.fashion;
+        case 'homeandgarden':
+          return ProductCategory.homeAndGarden;
+        case 'sports':
+          return ProductCategory.sports;
+        case 'books':
+          return ProductCategory.books;
+        case 'toys':
+          return ProductCategory.toys;
+        case 'beauty':
+          return ProductCategory.beauty;
+        case 'automotive':
+          return ProductCategory.automotive;
+        case 'health':
+          return ProductCategory.health;
+        case 'foodandbeverages':
+        case 'foodbeverages':
+          return ProductCategory.foodAndBeverages;
         default:
           return ProductCategory.unspecified;
       }
@@ -100,11 +124,11 @@ class Product {
       authId: json['auth_id'],
       name: json['name'],
       description: json['description'],
-      category: parseCategory(json['category']),
+      category: parseCategory(json['category']?.toString() ?? ''),
       brand: json['brand'],
       price: (json['price'] as num).toDouble(),
       stock: json['stock'],
-      condition: parseCondition(json['condition']),
+      condition: parseCondition(json['condition']?.toString() ?? ''),
       weightKg: (json['weight_kg'] as num?)?.toDouble(),
       dimensions: json['dimensions'],
       isFeatured: json['is_featured'],

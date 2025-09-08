@@ -7,7 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiService {
-  static const String baseUrl = "http://10.103.130.156:8000";
+  static const String baseUrl = "http://192.168.0.154:8000";
 
   // Fetch a specific user by ID
   static Future<Map<String, dynamic>?> getUserProfile(int userId) async {
@@ -27,73 +27,78 @@ class ApiService {
     final user = Supabase.instance.client.auth.currentUser;
     final userId = user?.id;
     final token = Supabase.instance.client.auth.currentSession?.accessToken;
-    
+
     if (userId == null || token == null) throw Exception('Not signed in');
 
     final url = Uri.parse('$baseUrl/users/$userId');
 
-    final response = await http.get(url, headers: {
-      'Authorization': 'Bearer $token',
-    });
+    final response = await http.get(
+      url,
+      headers: {'Authorization': 'Bearer $token'},
+    );
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('Failed to load profile: ${response.statusCode} ${response.body}');
+      throw Exception(
+        'Failed to load profile: ${response.statusCode} ${response.body}',
+      );
     }
   }
 
   //updateSelf
   static Future<Map<String, dynamic>?> updateSelf({
-  String? name,
-  String? email,
-  String? phone,
-  String? dob,
-  String? address,
-  File? avatar,
-}) async {
-  final user = Supabase.instance.client.auth.currentUser;
-  final userId = user?.id;
-  final token = Supabase.instance.client.auth.currentSession?.accessToken;
-  
-  if (userId == null || token == null) throw Exception('Not signed in');
+    String? name,
+    String? email,
+    String? phone,
+    String? dob,
+    String? address,
+    File? avatar,
+  }) async {
+    final user = Supabase.instance.client.auth.currentUser;
+    final userId = user?.id;
+    final token = Supabase.instance.client.auth.currentSession?.accessToken;
 
-  final url = Uri.parse('$baseUrl/users/$userId');
+    if (userId == null || token == null) throw Exception('Not signed in');
 
-  final request = http.MultipartRequest('PUT', url);
-  
-  // Add authorization header
-  request.headers['Authorization'] = 'Bearer $token';
+    final url = Uri.parse('$baseUrl/users/$userId');
 
-  if (name != null && name.isNotEmpty) request.fields['name'] = name;
-  if (email != null && email.isNotEmpty) request.fields['email'] = email;
-  if (phone != null && phone.isNotEmpty) request.fields['phone'] = phone;
-  if (dob != null && dob.isNotEmpty) request.fields['dob'] = dob;
-  if (address != null && address.isNotEmpty) request.fields['address'] = address;
+    final request = http.MultipartRequest('PUT', url);
 
-  if (avatar != null) {
-    final mimeType = lookupMimeType(avatar.path) ?? 'application/octet-stream';
-    final mimeParts = mimeType.split('/');
-    final fileStream = http.ByteStream(avatar.openRead());
-    final fileLength = await avatar.length();
+    // Add authorization header
+    request.headers['Authorization'] = 'Bearer $token';
 
-    final multipartFile = http.MultipartFile(
-      'profile_image',
-      fileStream,
-      fileLength,
-      filename: p.basename(avatar.path),
-      contentType: MediaType(mimeParts[0], mimeParts[1]),
-    );
-    request.files.add(multipartFile);
+    if (name != null && name.isNotEmpty) request.fields['name'] = name;
+    if (email != null && email.isNotEmpty) request.fields['email'] = email;
+    if (phone != null && phone.isNotEmpty) request.fields['phone'] = phone;
+    if (dob != null && dob.isNotEmpty) request.fields['dob'] = dob;
+    if (address != null && address.isNotEmpty)
+      request.fields['address'] = address;
+
+    if (avatar != null) {
+      final mimeType =
+          lookupMimeType(avatar.path) ?? 'application/octet-stream';
+      final mimeParts = mimeType.split('/');
+      final fileStream = http.ByteStream(avatar.openRead());
+      final fileLength = await avatar.length();
+
+      final multipartFile = http.MultipartFile(
+        'profile_image',
+        fileStream,
+        fileLength,
+        filename: p.basename(avatar.path),
+        contentType: MediaType(mimeParts[0], mimeParts[1]),
+      );
+      request.files.add(multipartFile);
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception('Update failed: ${response.statusCode} ${response.body}');
+    }
   }
-
-  final streamedResponse = await request.send();
-  final response = await http.Response.fromStream(streamedResponse);
-
-  if (response.statusCode == 200) {
-    return jsonDecode(response.body);
-  } else {
-    throw Exception('Update failed: ${response.statusCode} ${response.body}');
-  }
-}
 }

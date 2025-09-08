@@ -28,7 +28,7 @@ class _ShopScreenshotsWidgetState extends State<ShopScreenshotsWidget> {
         name: 'Winter Shearling Jacket',
         description:
             'Elevate your winter wardrobe with this luxurious white shearling jacket, paired with a chic black turtleneck and matching skirt. Perfect for a stylish day out, this outfit combines comfort and high fashion, ensuring you stay warm and turn heads wherever you go.',
-        category: ProductCategory.cozyWear,
+        category: ProductCategory.fashion,
         brand: 'Fashion Elite',
         price: 120.00,
         stock: 15,
@@ -49,7 +49,7 @@ class _ShopScreenshotsWidgetState extends State<ShopScreenshotsWidget> {
         name: 'Casual Chic Ensemble',
         description:
             'Step out in style with this casual chic ensemble featuring a trendy hat.',
-        category: ProductCategory.regularWear,
+        category: ProductCategory.fashion,
         brand: 'Urban Style',
         price: 85.50,
         stock: 25,
@@ -70,7 +70,7 @@ class _ShopScreenshotsWidgetState extends State<ShopScreenshotsWidget> {
         name: 'Urban Explorer Outfit',
         description:
             'Gear up for your next adventure with this urban explorer outfit, featuring a rugged jacket, durable boots, and practical cargo pants. Designed for comfort and functionality, this outfit is perfect for exploring the city or enjoying a weekend getaway.',
-        category: ProductCategory.footwear,
+        category: ProductCategory.fashion,
         brand: 'Adventure Gear',
         price: 215.00,
         stock: 8,
@@ -91,7 +91,7 @@ class _ShopScreenshotsWidgetState extends State<ShopScreenshotsWidget> {
         name: 'Classic glasses',
         description:
             'Elevate your style with these classic glasses, perfect for any occasion. Their timeless design and high-quality material make them a must-have accessory for those who appreciate both fashion and functionality.',
-        category: ProductCategory.regularWear,
+        category: ProductCategory.fashion,
         brand: 'Vision Pro',
         price: 215.00,
         stock: 12,

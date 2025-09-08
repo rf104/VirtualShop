@@ -44,11 +44,14 @@ class RelatedProductsService {
       throw Exception('Related fetch failed: ${resp.statusCode} ${resp.body}');
     }
     final Map<String, dynamic> jsonBody = jsonDecode(resp.body);
+    debugPrint('Related fetch response: $jsonBody');
     final List<dynamic> arr = (jsonBody['results'] as List?) ?? const [];
     final List<Product> out = [];
     for (final item in arr) {
       if (item is Map<String, dynamic>) {
-        out.add(Product.fromJson(item));
+        debugPrint('Related product item: $item');
+        Product p = Product.fromJson(item);
+        out.add(p);
       } else if (item is Map) {
         out.add(Product.fromJson(item.cast<String, dynamic>()));
       }

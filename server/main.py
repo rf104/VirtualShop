@@ -42,7 +42,6 @@ app.add_middleware(
 )
 
 
-
 class Models:
     clip: Optional[SentenceTransformer] = None
 
@@ -69,6 +68,7 @@ def _startup() -> None:
 # Register seller routes
 app.include_router(seller_router)
 
+
 @app.get("/")
 def read_root():
     return {"status": "ok"}
@@ -83,126 +83,142 @@ class _TryOnRequest(_json.JSONEncoder):
     pass
 
 
+'''
+curl -X POST "http://localhost:8000/process_image" -H "Content-Type: application/json" -d '{
+  "person_img_url": "http://example.com/person.jpg",
+  "garment_img_url": "http://example.com/garment.jpg",
+  "garment_des": "A stylish garment",
+  "is_checked": true,
+  "is_checked_crop": false,
+  "denoise_steps": 30,
+  "seed": 42
+}'
+'''
+
+
 @app.post("/process_image")
 def process_image(payload: dict):
-    """Bridge to Ayna-1.0 Gradio Space and upload resulting image to Supabase.
+    """Virtual try-on using Hugging Face Space yisol/IDM-VTON.
 
     Body JSON:
-      - garment_img_url: http(s) URL to garment image
-      - person_img_url: http(s) URL to person image
-      - garment_type: default 'full-body'
-      - sleeve_length: default 'ignore'
-      - garment_length: default 'ignore'
+      - person_img_url: http(s) URL for person (used as 'background')
+      - garment_img_url: http(s) URL for garment (garm_img)
+      - garment_des: short textual garment description (string)
+      - is_checked: bool (default True)
+      - is_checked_crop: bool (default False)
+      - denoise_steps: int/float (default 30)
+      - seed: int/float (default 42)
 
-    Returns: { url: public_url } if upload succeeded; otherwise { result: raw }
+    Returns:
+      If Supabase configured:
+        { url: <primary_result_url>, masked_url: <masked_result_url|null> }
+      Else (no Supabase):
+        { data_uri: <base64>, masked_data_uri: <base64|null> }
     """
-    client = getattr(app.state, "gradio_client", None)
-    if client is None:
-        # Try lazy init
-        if _GradioClient is None:
-            raise HTTPException(
-                status_code=500, detail="gradio_client not installed on server")
-        try:
-            client = _GradioClient("ayna-ai-org/ayna-1.0")
-            app.state.gradio_client = client
-        except Exception as e:
-            raise HTTPException(
-                status_code=500, detail=f"Failed to init Gradio client: {e}")
+    # ---- 1) Validate inputs ----
+    person_url = str(payload.get("person_img_url") or "").strip()
+    garment_url = str(payload.get("garment_img_url") or "").strip()
+    garment_des = str(payload.get("garment_des") or "").strip() or "garment"
+    is_checked = bool(payload.get("is_checked", True))
+    is_checked_crop = bool(payload.get("is_checked_crop", False))
+    denoise_steps = payload.get("denoise_steps", 30)
+    seed = payload.get("seed", 42)
 
-    g_url = str(payload.get("garment_img_url") or "").strip()
-    p_url = str(payload.get("person_img_url") or "").strip()
-    garment_type = str(payload.get("garment_type") or "full-body")
-    sleeve_length = str(payload.get("sleeve_length") or "ignore")
-    garment_length = str(payload.get("garment_length") or "ignore")
-    if not (g_url and p_url and (g_url.startswith("http://") or g_url.startswith("https://")) and (p_url.startswith("http://") or p_url.startswith("https://"))):
+    print(person_url, garment_url, garment_des)
+
+    def _valid(u: str) -> bool:
+        return u.startswith("http://") or u.startswith("https://")
+
+    if not (_valid(person_url) and _valid(garment_url)):
         raise HTTPException(
-            status_code=400, detail="garment_img_url and person_img_url must be http(s) URLs")
+            status_code=400, detail="person_img_url and garment_img_url must be http(s) URLs")
 
-    try:
+    # ---- 2) Init / cache Gradio client ----
+    if _GradioClient is None:
+        raise HTTPException(
+            status_code=500, detail="gradio_client not installed on server")
+    client = getattr(app.state, "idm_vton_client", None)
+    if client is None:
         try:
-            res = client.predict(
-                garment_img=_handle_file(g_url),
-                person_img=_handle_file(p_url),
-                garment_type=garment_type,
-                sleeve_length=sleeve_length,
-                garment_length=garment_length,
-                api_name="/validate_inputs",
-            )
-        except Exception:
-            # Try common default endpoint name
-            res = client.predict(
-                garment_img=_handle_file(g_url),
-                person_img=_handle_file(p_url),
-                garment_type=garment_type,
-                sleeve_length=sleeve_length,
-                garment_length=garment_length,
-                api_name="/predict",
-            )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    # If response is a URL to an image, download it
-    url_candidate = None
-    if isinstance(res, str) and (res.startswith("http://") or res.startswith("https://")):
-        url_candidate = res
-    elif isinstance(res, (list, tuple)) and res:
-        for it in res:
-            if isinstance(it, str) and (it.startswith("http://") or it.startswith("https://")):
-                url_candidate = it
-                break
-    if url_candidate:
-        try:
-            r = _requests.get(url_candidate, timeout=120)
-            r.raise_for_status()
-            content = r.content
-            content_type = r.headers.get("content-type", "").lower()
+            client = _GradioClient("yisol/IDM-VTON")
+            app.state.idm_vton_client = client
         except Exception as e:
             raise HTTPException(
-                status_code=502, detail=f"Failed to download result: {e}")
-    else:
-        # If the Space returns bytes-like or dict with 'image'
-        if isinstance(res, (bytes, bytearray)):
-            content = bytes(res)
-            content_type = "image/png"
-        elif isinstance(res, dict):
-            # Best-effort: find base64 data
-            data = res.get("image") or res.get("data") or res.get("result")
-            if isinstance(data, (list, tuple)) and data:
-                # pick first string-like
-                for it in data:
-                    if isinstance(it, str):
-                        data = it
-                        break
-            if isinstance(data, str) and (data.startswith("http://") or data.startswith("https://")):
-                try:
-                    r = _requests.get(data, timeout=120)
-                    r.raise_for_status()
-                    content = r.content
-                    content_type = r.headers.get("content-type", "").lower()
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=502, detail=f"Failed to download result: {e}")
-            elif isinstance(data, str):
-                try:
-                    if "," in data:
-                        data = data.split(",", 1)[1]
-                    content = base64.b64decode(data)
-                    content_type = "image/png"
-                except Exception:
-                    # Could not parse; return raw
-                    return {"result": res}
-            else:
-                return {"result": res}
-        else:
-            # Unknown type; return raw
-            return {"result": res}
+                status_code=500, detail=f"Failed to init IDM-VTON client: {e}")
 
-    # Upload to Supabase Storage bucket (try-on)
+    # ---- 3) Call Space ----
+    try:
+        result = client.predict(
+            dict={"background": _handle_file(
+                person_url), "layers": [], "composite": None},
+            garm_img=_handle_file(garment_url),
+            garment_des=garment_des,
+            is_checked=is_checked,
+            is_checked_crop=is_checked_crop,
+            denoise_steps=denoise_steps,
+            seed=seed,
+            api_name="/tryon",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Try-on model error: {e}")
+
+    # Expected tuple (primary, masked)
+    if not isinstance(result, (list, tuple)) or len(result) == 0:
+        raise HTTPException(
+            status_code=500, detail="Unexpected model output format")
+
+    primary_out = result[0]
+    masked_out = result[1] if len(result) > 1 else None
+
+    import mimetypes
+
+    def _read_output(obj):
+        """Return (bytes, mime, ext) or (None, None, None) if cannot read."""
+        if obj is None:
+            return None, None, None
+        if isinstance(obj, str):
+            if obj.startswith("http://") or obj.startswith("https://"):
+                try:
+                    r = _requests.get(obj, timeout=120)
+                    r.raise_for_status()
+                    ctype = r.headers.get("content-type") or ""
+                    ext = ".png"
+                    if "jpeg" in ctype:
+                        ext = ".jpg"
+                    elif "webp" in ctype:
+                        ext = ".webp"
+                    return r.content, ctype or "image/png", ext
+                except Exception:
+                    return None, None, None
+            # Local path inside Space container (gradio_client downloads artifact)
+            if os.path.exists(obj):
+                try:
+                    with open(obj, "rb") as f:
+                        data = f.read()
+                    guess, _ = mimetypes.guess_type(obj)
+                    ext = os.path.splitext(obj)[1] or ".png"
+                    return data, (guess or "image/png"), ext
+                except Exception:
+                    return None, None, None
+        return None, None, None
+
+    primary_bytes, primary_mime, primary_ext = _read_output(primary_out)
+    if not primary_bytes:
+        raise HTTPException(
+            status_code=500, detail="Failed to retrieve primary output image")
+
+    masked_bytes, masked_mime, masked_ext = _read_output(masked_out)
+
+    # ---- 4) Upload (or return base64) ----
     sb = getattr(app.state, "supabase", None)
     if sb is None:
-        # If Supabase not configured, return the image bytes base64 to client
-        b64 = base64.b64encode(content).decode("utf-8")
-        return {"data_uri": f"data:image/png;base64,{b64}"}
+        # No Supabase: return data URIs
+        b64_primary = base64.b64encode(primary_bytes).decode("utf-8")
+        resp = {"data_uri": f"data:{primary_mime or 'image/png'};base64,{b64_primary}"}
+        if masked_bytes:
+            b64_masked = base64.b64encode(masked_bytes).decode("utf-8")
+            resp["masked_data_uri"] = f"data:{masked_mime or 'image/png'};base64,{b64_masked}"
+        return resp
 
     bucket = os.getenv("TRYON_BUCKET", "try-on")
     try:
@@ -210,55 +226,40 @@ def process_image(payload: dict):
     except Exception:
         pass
 
-    # Save to temp and upload
-    # decide extension from content type
-    ctype = (locals().get("content_type") or "").lower()
-    if "jpeg" in ctype or "jpg" in ctype:
-        ext = ".jpg"
-        mime = "image/jpeg"
-    elif "webp" in ctype:
-        ext = ".webp"
-        mime = "image/webp"
-    elif "png" in ctype:
-        ext = ".png"
-        mime = "image/png"
-    else:
-        ext = ".png"
-        mime = "image/png"
+    def _upload(content: bytes, mime: str, ext: str) -> str | None:
+        key = f"results/{uuid.uuid4()}{ext}"
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                tmp.write(content)
+                tmp.flush()
+                tmp_path = tmp.name
+            sb.storage.from_(bucket).upload(
+                file=tmp_path,
+                path=key,
+                file_options={
+                    "content-type": mime or "image/png",
+                    "upsert": False,
+                },
+            )
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+        url_resp = sb.storage.from_(bucket).get_public_url(key)
+        if isinstance(url_resp, str):
+            return url_resp
+        if isinstance(url_resp, dict):
+            return url_resp.get("publicUrl") or url_resp.get("public_url") or url_resp.get("url")
+        return str(url_resp)
 
-    key = f"results/{uuid.uuid4()}{ext}"
-    tmp_path = None
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-            tmp.write(content)
-            tmp.flush()
-            tmp_path = tmp.name
-        sb.storage.from_(bucket).upload(
-            file=tmp_path,
-            path=key,
-            file_options={
-                "content-type": mime,
-                "upsert": False,
-            },
-        )
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except Exception:
-                pass
-
-    # Public URL
-    url_resp = sb.storage.from_(bucket).get_public_url(key)
-    if isinstance(url_resp, str):
-        url = url_resp
-    elif isinstance(url_resp, dict):
-        url = url_resp.get("publicUrl") or url_resp.get(
-            "public_url") or url_resp.get("url")
-    else:
-        url = str(url_resp)
-
-    return {"url": url}
+    primary_url = _upload(primary_bytes, primary_mime, primary_ext or ".png")
+    masked_url = _upload(masked_bytes, masked_mime,
+                         masked_ext or ".png") if masked_bytes else None
+    print("Uploaded try-on results to:", primary_url, masked_url)
+    return {"url": primary_url, "masked_url": masked_url}
 
 
 @app.get("/items/{item_id}")
@@ -730,12 +731,14 @@ def add_to_cart(payload: dict, authorization: str | None = Header(default=None))
 @app.post("/cart/checkout")
 def checkout(authorization: str | None = Header(default=None)):
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Missing Authorization bearer token")
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
 
     base = os.environ.get("SUPABASE_URL")
     anon = os.environ.get("SUPABASE_ANON_KEY")
     if not base or not anon:
-        raise HTTPException(status_code=500, detail="SUPABASE_URL/ANON_KEY missing on server")
+        raise HTTPException(
+            status_code=500, detail="SUPABASE_URL/ANON_KEY missing on server")
 
     rpc_url = base.rstrip("/") + "/rest/v1/rpc/checkout_self"
     headers = {"apikey": anon, "Authorization": authorization}
@@ -748,12 +751,14 @@ def checkout(authorization: str | None = Header(default=None)):
         raise HTTPException(status_code=400, detail=f"RPC call failed: {e}")
 
     if r.status_code >= 400:
-        raise HTTPException(status_code=r.status_code, detail=f"Checkout RPC error: {r.text}")
+        raise HTTPException(status_code=r.status_code,
+                            detail=f"Checkout RPC error: {r.text}")
 
     try:
         checkout_resp = r.json()
     except ValueError:
-        raise HTTPException(status_code=500, detail=f"Invalid JSON from checkout RPC: {r.text}")
+        raise HTTPException(
+            status_code=500, detail=f"Invalid JSON from checkout RPC: {r.text}")
 
     # normalize into a list of shop-orders (orders may already be per-shop)
     if isinstance(checkout_resp, dict):
@@ -778,7 +783,8 @@ def checkout(authorization: str | None = Header(default=None)):
         order_id = o.get("id") or o.get("order_id") or o.get("orderId")
         amount = (o.get("total") or o.get("amount") or o.get("grand_total")
                   or o.get("total_amount") or o.get("gross_price"))
-        shop_id = o.get("shop_id") or o.get("seller_id") or o.get("vendor_id")  # optional, if returned
+        shop_id = o.get("shop_id") or o.get("seller_id") or o.get(
+            "vendor_id")  # optional, if returned
 
         if not order_id:
             skipped.append(o)
@@ -821,7 +827,8 @@ def checkout(authorization: str | None = Header(default=None)):
         "id": master_order_id,
         # best-effort minimal fields; adjust according to your orders schema
         "created_at": now_iso,
-        "order_status": "grouped",  # if your orders table does not have this column, insertion may fail
+        # if your orders table does not have this column, insertion may fail
+        "order_status": "grouped",
         # optionally include totals for bookkeeping
         "total_amount": str(total_amount) if total_amount is not None else None
     }
@@ -838,7 +845,8 @@ def checkout(authorization: str | None = Header(default=None)):
     try:
         with httpx.Client(timeout=30.0) as s:
             # try creating the master order
-            mo_r = s.post(orders_url, headers=insert_headers, json=master_order_payload)
+            mo_r = s.post(orders_url, headers=insert_headers,
+                          json=master_order_payload)
     except Exception as e:
         # network/timeout while creating master order -> fallback to Option A
         mo_r = None
@@ -882,17 +890,20 @@ def checkout(authorization: str | None = Header(default=None)):
             for p in payments_payload_by_order
         ]
         used_path = "per_shop_orders"
-    
+
     # Insert payments
     try:
         with httpx.Client(timeout=30.0) as s:
-            p_r = s.post(payments_url, headers=insert_headers, json=payments_payload)
+            p_r = s.post(payments_url, headers=insert_headers,
+                         json=payments_payload)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Payments insert failed: {e}")
+        raise HTTPException(
+            status_code=400, detail=f"Payments insert failed: {e}")
 
     if p_r.status_code >= 400:
         # show Supabase body so you can debug RLS/constraint issues
-        raise HTTPException(status_code=p_r.status_code, detail=f"Payments insert error: {p_r.text}")
+        raise HTTPException(status_code=p_r.status_code,
+                            detail=f"Payments insert error: {p_r.text}")
 
     try:
         payments_result = p_r.json()
@@ -910,7 +921,6 @@ def checkout(authorization: str | None = Header(default=None)):
         }
     }
     return response
-
 
 
 @app.get("/suggest")
@@ -1644,13 +1654,15 @@ async def create_product(
         "text_embedding_dim": len(text_embedding),
     }
 
-## user profile test endpoint
+# user profile test endpoint
+
+
 @app.get('/userprofile')
 def test():
     return {"message": "User Profile Service is up and running."}
 
 
-## all user profiles
+# all user profiles
 @app.get("/users")
 def get_users():
     """
@@ -1665,7 +1677,8 @@ def get_users():
     try:
         user_res = client.table("users").select("*").execute()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Supabase query failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Supabase query failed: {str(e)}")
 
     # Check for query errors
     if getattr(user_res, "error", None):
@@ -1675,7 +1688,9 @@ def get_users():
     users = user_res.data or []
     return users
 
-## All sellers profile 
+# All sellers profile
+
+
 @app.get("/sellers")
 def get_sellers():
     """
@@ -1695,13 +1710,15 @@ def get_sellers():
             .execute()
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Supabase query failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Supabase query failed: {str(e)}")
 
     if getattr(seller_res, "error", None):
         raise HTTPException(status_code=400, detail=str(seller_res.error))
 
     sellers = seller_res.data or []
     return sellers
+
 
 @app.get("/users/{user_id}")
 def get_user_profile(user_id: str, authorization: str | None = Header(default=None)):
@@ -1711,7 +1728,8 @@ def get_user_profile(user_id: str, authorization: str | None = Header(default=No
     # Verify the user is accessing their own profile
     auth_user_id = _get_user_from_authorization(authorization)
     if not auth_user_id or auth_user_id != user_id:
-        raise HTTPException(status_code=401, detail="Unauthorized: can only access your own profile")
+        raise HTTPException(
+            status_code=401, detail="Unauthorized: can only access your own profile")
 
     client = getattr(app.state, "supabase", None)
     if client is None:
@@ -1726,14 +1744,17 @@ def get_user_profile(user_id: str, authorization: str | None = Header(default=No
             .execute()
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Supabase query failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Supabase query failed: {str(e)}")
 
     if getattr(user_res, "error", None):
         raise HTTPException(status_code=404, detail="User not found")
 
     return user_res.data
 
-## Update User Profile Info
+# Update User Profile Info
+
+
 @app.put("/users/{user_id}")
 async def update_user_profile(
     user_id: str,
@@ -1752,10 +1773,11 @@ async def update_user_profile(
     # Verify the user is updating their own profile
     auth_user_id = _get_user_from_authorization(authorization)
     if not auth_user_id or auth_user_id != user_id:
-        raise HTTPException(status_code=401, detail="Unauthorized: can only update your own profile")
+        raise HTTPException(
+            status_code=401, detail="Unauthorized: can only update your own profile")
 
-    client = getattr(app.state, "supabase", None) 
-    if client is None:  
+    client = getattr(app.state, "supabase", None)
+    if client is None:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     # Prepare update data
@@ -1803,7 +1825,8 @@ async def update_user_profile(
             if isinstance(url_resp, str):
                 url = url_resp
             elif isinstance(url_resp, dict):
-                url = url_resp.get("publicUrl") or url_resp.get("public_url") or url_resp.get("url")
+                url = url_resp.get("publicUrl") or url_resp.get(
+                    "public_url") or url_resp.get("url")
             else:
                 url = str(url_resp)
             if url:
@@ -1820,7 +1843,29 @@ async def update_user_profile(
             .execute()
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Supabase query failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Supabase query failed: {str(e)}")
+
+    if getattr(update_res, "error", None):
+        raise HTTPException(status_code=400, detail=str(update_res.error))
+
+    return {"ok": True, "data": update_res.data}
+    if url:
+        update_data["profile_image"] = url
+
+    if not update_data:
+        return {"ok": True, "message": "No changes to update"}
+
+    try:
+        update_res = (
+            client.table("users")
+            .update(update_data)
+            .eq("auth_id", user_id)  # Use auth_id instead of user_id
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Supabase query failed: {str(e)}")
 
     if getattr(update_res, "error", None):
         raise HTTPException(status_code=400, detail=str(update_res.error))

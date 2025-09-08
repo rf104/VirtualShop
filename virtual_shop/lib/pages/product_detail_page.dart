@@ -52,6 +52,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         productId: widget.product.id,
         limit: 8,
       );
+      debugPrint('Related products: $results');
       if (mounted) {
         setState(() {
           _related = results;
@@ -129,16 +130,14 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           Text('No related products', style: TextStyle(color: Colors.grey[600]))
         else
           ConstrainedBox(
-            constraints: const BoxConstraints(
-              maxHeight: 200,
-              minHeight: 180,
-            ),
+            constraints: const BoxConstraints(maxHeight: 200, minHeight: 180),
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: related.length,
               separatorBuilder: (_, __) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
                 final product = related[index];
+                debugPrint(product.toString());
                 return SizedBox(
                   width: 150,
                   child: GestureDetector(
@@ -162,6 +161,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
   Widget _ProductCardMini({required Product product}) {
+    debugPrint(_categoryLabel(product.category));
     return Container(
       decoration: BoxDecoration(
         color: Colors.grey[850],
@@ -198,7 +198,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           ),
           const SizedBox(height: 2),
           Text(
-            product.category.toString(),
+            _categoryLabel(product.category),
             style: TextStyle(color: Colors.grey[400], fontSize: 10),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -545,10 +545,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  widget.product.category
-                                      .toString()
-                                      .split('.')
-                                      .last,
+                                  _categoryLabel(widget.product.category),
                                   style: TextStyle(
                                     fontSize: rf(context, 16),
                                     color: Colors.grey[600],
@@ -698,6 +695,67 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         );
       },
     );
+  }
+
+  String _categoryLabel(dynamic category) {
+    if (category == null) return '';
+    if (category is ProductCategory) {
+      switch (category) {
+        case ProductCategory.electronics:
+          return 'Electronics';
+        case ProductCategory.fashion:
+          return 'Fashion';
+        case ProductCategory.homeAndGarden:
+          return 'Home & Garden';
+        case ProductCategory.sports:
+          return 'Sports';
+        case ProductCategory.books:
+          return 'Books';
+        case ProductCategory.toys:
+          return 'Toys';
+        case ProductCategory.beauty:
+          return 'Beauty';
+        case ProductCategory.automotive:
+          return 'Automotive';
+        case ProductCategory.health:
+          return 'Health';
+        case ProductCategory.foodAndBeverages:
+          return 'Food & Beverages';
+        case ProductCategory.unspecified:
+          return '';
+      }
+    }
+    // Fallback for raw strings
+    String raw = category.toString();
+    if (raw.contains('.')) raw = raw.split('.').last; // enum to last part
+    final normalized = raw
+        .toLowerCase()
+        .replaceAll('&', 'and')
+        .replaceAll(RegExp(r'[^a-z]'), '');
+    switch (normalized) {
+      case 'electronics':
+        return 'Electronics';
+      case 'fashion':
+        return 'Fashion';
+      case 'homeandgarden':
+        return 'Home & Garden';
+      case 'sports':
+        return 'Sports';
+      case 'books':
+        return 'Books';
+      case 'toys':
+        return 'Toys';
+      case 'beauty':
+        return 'Beauty';
+      case 'automotive':
+        return 'Automotive';
+      case 'health':
+        return 'Health';
+      case 'foodandbeverages':
+        return 'Food & Beverages';
+      default:
+        return '';
+    }
   }
 
   // ignore: unused_element
