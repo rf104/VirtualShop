@@ -68,3 +68,46 @@ See the SQL block in the parent conversation for full definitions.
 ## Notes
 - On servers, prefer `SUPABASE_SERVICE_ROLE_KEY` for admin operations. Never expose it to browsers.
 - For public, read-only use, set `SUPABASE_ANON_KEY`.
+
+## MCP (Model Context Protocol)
+
+This server mounts a FastMCP instance under `/llm/mcp`:
+
+- Auto-generated tools from all FastAPI routes (via `FastMCP.from_fastapi`).
+- A curated `assistant_chat` tool that proxies chat to Gemini 2.5 Pro when `GEMINI_API_KEY` is set.
+
+Run locally:
+
+```bash
+uvicorn server.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Endpoints:
+- MCP manifest and RPC entrypoint: `http://localhost:8000/llm/mcp/`
+- Assistant REST bridge (for non-MCP clients): `POST /assistant/chat`
+
+Environment variables:
+- `GEMINI_API_KEY` (optional): enables Gemini-based responses for `assistant_chat`.
+
+Gemini tool-calling example (optional)
+
+```python
+# run this separately to test tool-calling
+import asyncio
+from google import genai
+from google.genai import types
+from fastmcp import Client as MCPClient
+
+async def main():
+	# Connect to the mounted MCP server
+	async with MCPClient("http://localhost:8000/llm/mcp/") as mcp_client:
+		gclient = genai.Client()
+		resp = await gclient.aio.models.generate_content(
+			model="gemini-2.5-pro",
+			contents="List products and then fetch details for the first one.",
+			config=types.GenerateContentConfig(tools=[mcp_client.session]),
+		)
+		print(resp.text)
+
+asyncio.run(main())
+```

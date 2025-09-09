@@ -17,6 +17,7 @@ import numpy as np
 import json
 from ast import literal_eval
 import os as _os
+import asyncio
 
 from server.supabase_client import get_supabase, SupabaseNotConfigured
 import httpx
@@ -30,6 +31,15 @@ except Exception:
     _GradioClient = None
     _handle_file = None
 
+from contextlib import asynccontextmanager
+
+try:
+    from fastmcp import FastMCP  # type: ignore
+except Exception:
+    FastMCP = None  # type: ignore
+
+
+# Create base FastAPI app (lifespan will be set after MCP http app is created)
 app = FastAPI()
 
 # Allow local dev frontend and Flutter Web to hit this API
@@ -63,6 +73,90 @@ def _startup() -> None:
             "ayna-ai-org/ayna-1.0") if _GradioClient else None
     except Exception:
         app.state.gradio_client = None
+
+
+"""MCP setup
+
+We will mount an MCP server under /llm/mcp that exposes:
+- Auto-generated MCP tools for all FastAPI endpoints via FastMCP.from_fastapi
+- A curated `assistant_chat` tool that proxies to Gemini 2.5 (if configured)
+
+To ensure all routes are included, MCP initialization happens near the end of
+this file after all FastAPI routes are defined.
+"""
+
+# Global handle (assigned after routes are defined)
+mcp = None
+
+
+def assistant_chat_impl(messages: list[dict]) -> dict:
+    """Chat with the VirtualShop assistant.
+
+    Expects a list of messages: [{"role": "user"|"assistant", "content": "..."}]
+    Returns {"reply": "..."}.
+    Uses Gemini 2.5 Pro if GEMINI_API_KEY is set, otherwise returns a fallback.
+    """
+    try:
+        api_key = _os.environ.get("GEMINI_API_KEY")
+        # Build typed contents; map 'assistant' -> 'model'
+        from google import genai
+        from google.genai import types as genai_types
+
+        typed_contents: list[genai_types.Content] = []
+        for m in (messages or []):
+            role_raw = (m.get("role") or "user").strip().lower()
+            text = str(m.get("content") or "")
+            part = genai_types.Part.from_text(text=text)
+            role = "model" if role_raw in ("assistant", "model") else "user"
+            typed_contents.append(genai_types.Content(role=role, parts=[part]))
+        if not typed_contents:
+            typed_contents = [
+                genai_types.Content(role="user", parts=[
+                                    genai_types.Part.from_text(text="Hello")])
+            ]
+
+        # Prefer Gemini with MCP tools if API key and MCP are available
+        if api_key and ("mcp" in globals() and globals().get("mcp") is not None):
+            async def _run_with_tools() -> str:
+                from fastmcp import Client as MCPClient
+                gclient = genai.Client(api_key=api_key)
+                # Use in-memory transport by passing the server instance
+                async with MCPClient(globals()["mcp"]) as mcp_client:
+                    resp = await gclient.aio.models.generate_content(
+                        model="gemini-2.5-pro",
+                        contents=typed_contents,
+                        config=genai_types.GenerateContentConfig(
+                            temperature=0,
+                            tools=[mcp_client.session],
+                        ),
+                    )
+                    return getattr(resp, "text", None) or ""
+
+            try:
+                text = asyncio.run(_run_with_tools())
+                return {"reply": text}
+            except Exception as _tool_e:
+                # fall back to plain Gemini below
+                pass
+
+        if api_key:
+            client = genai.Client(api_key=api_key)
+            resp = client.models.generate_content(
+                model="gemini-2.5-pro",
+                contents=typed_contents,
+            )
+            text = getattr(resp, "text", None) or ""
+            return {"reply": text}
+
+        # No API key: fallback echo
+        last = next((m for m in reversed(messages or [])
+                    if m.get("role") == "user"), {})
+        return {"reply": f"(mock) You said: {last.get('content', '')}"}
+    except Exception as e:
+        return {"reply": f"Assistant error: {e}"}
+
+
+# (MCP initialization occurs near the end of file to include all routes.)
 
 
 # Register seller routes
@@ -515,6 +609,13 @@ def _get_user_from_authorization(authorization: str | None) -> str | None:
             pass
     # Fallback to insecure local decode
     return _decode_jwt_sub(authorization)
+
+
+def _ensure_bucket(client, bucket: str) -> None:
+    try:
+        client.storage.create_bucket(bucket, options={"public": True})
+    except Exception:
+        pass
 
 
 # ---------------------- REVIEWS API ----------------------
@@ -1850,24 +1951,71 @@ async def update_user_profile(
         raise HTTPException(status_code=400, detail=str(update_res.error))
 
     return {"ok": True, "data": update_res.data}
-    if url:
-        update_data["profile_image"] = url
 
-    if not update_data:
-        return {"ok": True, "message": "No changes to update"}
 
+# ---------------------- ASSISTANT REST BRIDGE ----------------------
+
+@app.post("/assistant/chat")
+def assistant_chat_rest(payload: dict):
+    """Simple REST bridge to the MCP tool `assistant_chat`.
+
+    Body: { messages: [{ role: "user"|"assistant", content: string }] }
+    Returns: { reply: string }
+    """
+    messages = payload.get("messages") if isinstance(payload, dict) else None
+    if not isinstance(messages, list):
+        messages = []
     try:
-        update_res = (
-            client.table("users")
-            .update(update_data)
-            .eq("auth_id", user_id)  # Use auth_id instead of user_id
-            .execute()
-        )
+        # call core implementation directly
+        result = assistant_chat_impl(messages)
+        if not isinstance(result, dict):
+            return {"reply": str(result)}
+        return result
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Supabase query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"assistant error: {e}")
 
-    if getattr(update_res, "error", None):
-        raise HTTPException(status_code=400, detail=str(update_res.error))
 
-    return {"ok": True, "data": update_res.data}
+@app.get("/assistant/health")
+def assistant_health():
+    """Health check for assistant integration."""
+    status = {
+        "gemini": bool(_os.environ.get("GEMINI_API_KEY")),
+        "mcp_mounted": bool(FastMCP and mcp is not None),
+        "path": "/llm/mcp" if FastMCP and mcp is not None else None,
+    }
+    return status
+
+
+# ---------------------- MCP INITIALIZATION (mount under /llm/mcp) ----------------------
+
+# Important: do this after routes are defined so from_fastapi captures all endpoints
+if FastMCP is not None:
+    try:
+        # Generate MCP server from FastAPI (auto exposes endpoints as MCP tools)
+        generated_mcp = FastMCP.from_fastapi(app=app, name="VirtualShop API")
+
+        # Add curated assistant tool to the generated server
+        assistant_chat_tool = generated_mcp.tool(assistant_chat_impl)
+
+        # Create ASGI app for MCP
+        mcp_app = generated_mcp.http_app(path="/mcp")
+
+        # Combine lifespans: keep FastAPI's existing startup handlers AND MCP's session manager
+        original_lifespan = app.router.lifespan_context
+
+        @asynccontextmanager
+        async def combined_lifespan(app_: FastAPI):
+            async with original_lifespan(app_):
+                async with mcp_app.lifespan(app_):
+                    yield
+
+        # Install combined lifespan and mount under /llm
+        # type: ignore[attr-defined]
+        app.router.lifespan_context = combined_lifespan
+        app.mount("/llm", mcp_app)
+
+        # expose global handle for health checks
+        mcp = generated_mcp  # type: ignore[assignment]
+    except Exception as _e:
+        # If MCP setup fails, keep the API running; assistant will still work via REST
+        mcp = None  # type: ignore[assignment]

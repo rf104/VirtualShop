@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:virtual_shop/utils/api_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ChatAssistantPage extends StatefulWidget {
   const ChatAssistantPage({super.key});
@@ -16,22 +22,104 @@ class _ChatAssistantPageState extends State<ChatAssistantPage> {
       isUser: false,
     ),
   ];
+  bool _isSending = false;
 
-  void _handleSendPressed() {
+  String _displayName = 'User';
+  String? _profileImageUrl;
+  ImageProvider? _avatarProvider;
+
+  Map<String, String>? _headersForUrl(String url) {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) return null;
+    if (url.contains('supabase.co') && url.contains('/storage/v1/object/')) {
+      return {'Authorization': 'Bearer ${session.accessToken}'};
+    }
+    return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        final meta = user.userMetadata ?? {};
+        final dynamic avatarCandidate =
+            meta['avatar_url_custom'] ?? meta['picture'] ?? meta['avatarUrl'];
+        final dynamic nameCandidate =
+            meta['name'] ?? meta['fullName'] ?? user.email;
+
+        if (avatarCandidate is String && avatarCandidate.trim().isNotEmpty) {
+          final url = avatarCandidate.trim();
+          final provider = CachedNetworkImageProvider(
+            url,
+            maxHeight: 150,
+            cacheKey: url,
+            headers: _headersForUrl(url),
+          );
+          if (!mounted) return;
+          setState(() {
+            _profileImageUrl = url;
+            _avatarProvider = provider;
+          });
+          unawaited(precacheImage(provider, context).catchError((_) {}));
+        }
+
+        if (!mounted) return;
+        setState(() {
+          _displayName =
+              nameCandidate is String && nameCandidate.trim().isNotEmpty
+              ? nameCandidate.trim()
+              : 'User';
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _handleSendPressed() async {
     final text = _textController.text;
     if (text.isNotEmpty) {
       setState(() {
         _messages.add(_ChatMessage(text: text, isUser: true));
         _textController.clear();
-        // Add a dummy response
-        _messages.add(
-          _ChatMessage(
-            text: "That's a great idea! Here's another suggestion.",
-            isUser: false,
-          ),
-        );
+        _isSending = true;
       });
       _scrollToBottom();
+      try {
+        final history = _messages
+            .map(
+              (m) => {
+                'role': m.isUser ? 'user' : 'assistant',
+                'content': m.text,
+              },
+            )
+            .toList();
+        final reply = await ApiService.assistantChat(history);
+        if (!mounted) return;
+        setState(() {
+          _messages.add(
+            _ChatMessage(text: reply.isEmpty ? '...' : reply, isUser: false),
+          );
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _messages.add(
+            _ChatMessage(text: 'Assistant error: $e', isUser: false),
+          );
+        });
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isSending = false;
+          });
+          _scrollToBottom();
+        }
+      }
     }
   }
 
@@ -81,25 +169,33 @@ class _ChatAssistantPageState extends State<ChatAssistantPage> {
   }
 
   Widget _buildHeader() {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
+    final ImageProvider avatar =
+        _avatarProvider ??
+        (_profileImageUrl != null
+            ? CachedNetworkImageProvider(
+                _profileImageUrl!,
+                maxHeight: 150,
+                cacheKey: _profileImageUrl!,
+                headers: _headersForUrl(_profileImageUrl!),
+              )
+            : const AssetImage('assets/images/profile2.jpg'));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 20.0),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 25,
-            backgroundImage: AssetImage('assets/images/profile2.jpg'),
-          ),
-          SizedBox(width: 15),
+          CircleAvatar(radius: 25, backgroundImage: avatar),
+          const SizedBox(width: 15),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'Good morning,',
                 style: TextStyle(color: Colors.white70, fontSize: 18),
               ),
               Text(
-                'Alice',
-                style: TextStyle(
+                _displayName,
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -193,7 +289,56 @@ class _ChatAssistantPageState extends State<ChatAssistantPage> {
           color: message.isUser ? Colors.blue : Colors.white.withOpacity(0.1),
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Text(message.text, style: const TextStyle(color: Colors.white)),
+        child: message.isUser
+            ? Text(message.text, style: const TextStyle(color: Colors.white))
+            : MarkdownBody(
+                data: message.text,
+                selectable: false,
+                styleSheet: MarkdownStyleSheet(
+                  p: const TextStyle(color: Colors.white),
+                  h1: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  h2: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  h3: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  code: const TextStyle(color: Colors.white),
+                  codeblockDecoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  blockquoteDecoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border(
+                      left: BorderSide(color: Colors.white24, width: 3),
+                    ),
+                  ),
+                  a: const TextStyle(
+                    color: Colors.lightBlueAccent,
+                    decoration: TextDecoration.underline,
+                  ),
+                  listBullet: const TextStyle(color: Colors.white),
+                ),
+                onTapLink: (text, href, title) async {
+                  if (href == null) return;
+                  final uri = Uri.tryParse(href);
+                  if (uri == null) return;
+                  try {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  } catch (_) {}
+                },
+              ),
       ),
     );
   }
@@ -226,7 +371,7 @@ class _ChatAssistantPageState extends State<ChatAssistantPage> {
               ),
             ),
             GestureDetector(
-              onTap: _handleSendPressed,
+              onTap: _isSending ? null : _handleSendPressed,
               child: Container(
                 decoration: const BoxDecoration(
                   color: Colors.blue,
@@ -235,7 +380,11 @@ class _ChatAssistantPageState extends State<ChatAssistantPage> {
                 child: Padding(
                   padding: const EdgeInsets.all(10.0),
                   child: Icon(
-                    _textController.text.isEmpty ? Icons.mic : Icons.send,
+                    _isSending
+                        ? Icons.hourglass_bottom
+                        : (_textController.text.isEmpty
+                              ? Icons.mic
+                              : Icons.send),
                     color: Colors.white,
                     size: 24,
                   ),
