@@ -7,7 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiService {
-  static const String baseUrl = "http://192.168.0.154:8000";
+  static const String baseUrl = "http://10.103.137.37:8000";
 
   // Fetch a specific user by ID
   static Future<Map<String, dynamic>?> getUserProfile(int userId) async {
