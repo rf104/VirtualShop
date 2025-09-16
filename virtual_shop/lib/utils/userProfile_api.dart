@@ -1,5 +1,7 @@
 import 'dart:convert';
-import 'dart:io' show File;
+import 'dart:io' show File, Platform;
+import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:mime/mime.dart';
@@ -7,30 +9,42 @@ import 'package:path/path.dart' as p;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ApiService {
-  static const String baseUrl = "http://10.103.137.37:8000";
+  static String get baseUrl {
+    final fromServer = dotenv.env['SERVER_URL']?.trim();
+    final fromBackend = dotenv.env['BACKEND_URL']?.trim();
+    String raw = (fromServer?.isNotEmpty == true)
+        ? fromServer!
+        : (fromBackend?.isNotEmpty == true
+              ? fromBackend!
+              : 'http://127.0.0.1:8000');
+    raw = raw.replaceFirst(RegExp(r'^(https?://)\s+'), r'$1');
+    String url = raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
 
-  // Fetch a specific user by ID
-  static Future<Map<String, dynamic>?> getUserProfile(int userId) async {
-    final url = Uri.parse('$baseUrl/users/$userId');
-
-    final response = await http.get(url);
-
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body); // returns user info as Map
-    } else {
-      throw Exception("Error: ${response.reasonPhrase}");
-    }
+    try {
+      if (!kIsWeb && Platform.isAndroid) {
+        final uri = Uri.parse(url);
+        if (uri.host == '127.0.0.1' || uri.host == 'localhost') {
+          final hostIp = dotenv.env['hostIp']?.trim() ?? '192.168.0.102';
+          print(
+            'DEBUG: Using hostIp = $hostIp from env: ${dotenv.env['hostIp']}',
+          );
+          url = uri.replace(host: hostIp).toString();
+          print('DEBUG: Final URL = $url');
+        }
+      }
+    } catch (_) {}
+    return url;
   }
 
-  // Get current user profile
+  // Get current user profile using auth_id
   static Future<Map<String, dynamic>?> getCurrentUserProfile() async {
     final user = Supabase.instance.client.auth.currentUser;
-    final userId = user?.id;
+    final authId = user?.id;
     final token = Supabase.instance.client.auth.currentSession?.accessToken;
 
-    if (userId == null || token == null) throw Exception('Not signed in');
+    if (authId == null || token == null) throw Exception('Not signed in');
 
-    final url = Uri.parse('$baseUrl/users/$userId');
+    final url = Uri.parse('$baseUrl/users/$authId');
 
     final response = await http.get(
       url,
@@ -46,7 +60,7 @@ class ApiService {
     }
   }
 
-  //updateSelf
+  // Update current user profile using auth_id
   static Future<Map<String, dynamic>?> updateSelf({
     String? name,
     String? email,
@@ -56,18 +70,18 @@ class ApiService {
     File? avatar,
   }) async {
     final user = Supabase.instance.client.auth.currentUser;
-    final userId = user?.id;
+    final authId = user?.id;
     final token = Supabase.instance.client.auth.currentSession?.accessToken;
 
-    if (userId == null || token == null) throw Exception('Not signed in');
+    if (authId == null || token == null) throw Exception('Not signed in');
 
-    final url = Uri.parse('$baseUrl/users/$userId');
-
+    final url = Uri.parse('$baseUrl/users/$authId');
     final request = http.MultipartRequest('PUT', url);
 
     // Add authorization header
     request.headers['Authorization'] = 'Bearer $token';
 
+    // Add form fields
     if (name != null && name.isNotEmpty) request.fields['name'] = name;
     if (email != null && email.isNotEmpty) request.fields['email'] = email;
     if (phone != null && phone.isNotEmpty) request.fields['phone'] = phone;
@@ -75,6 +89,7 @@ class ApiService {
     if (address != null && address.isNotEmpty)
       request.fields['address'] = address;
 
+    // Add profile image if provided
     if (avatar != null) {
       final mimeType =
           lookupMimeType(avatar.path) ?? 'application/octet-stream';
@@ -96,7 +111,16 @@ class ApiService {
     final response = await http.Response.fromStream(streamedResponse);
 
     if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+      final result = jsonDecode(response.body);
+
+      // Return the updated data if available
+      if (result['data'] != null &&
+          result['data'] is List &&
+          result['data'].isNotEmpty) {
+        return result['data'][0] as Map<String, dynamic>;
+      }
+
+      return result as Map<String, dynamic>;
     } else {
       throw Exception('Update failed: ${response.statusCode} ${response.body}');
     }

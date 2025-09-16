@@ -1,9 +1,12 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../models/seller.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiService {
-  static const String baseUrl = "http://10.103.137.37:8000";
+  // static const String baseUrl = "http://192.168.0.154:8000";
+  static final String baseUrl =
+      "http://${dotenv.env['hostIp']}:${dotenv.env['PORT']}";
 
   // Fetch all sellers
   static Future<List<Seller>> getAllSellers() async {
