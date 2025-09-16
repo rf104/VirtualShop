@@ -774,41 +774,52 @@ def submit_product_review(product_id: str, payload: dict, authorization: str | N
         "review": review_text,
     }
     updated = False
-    # Try insert first
-    res = client.table("reviews").insert(row).execute()
-    if getattr(res, "error", None):
-        err = res.error
-        # Detect unique violation (Postgres code 23505)
-        code = None
-        try:
-            code = getattr(err, "code", None) or (
-                err.get("code") if isinstance(err, dict) else None
-            )
-        except Exception:
-            pass
-        if code == "23505":
-            # Update existing review instead of failing
-            upd = (
-                client.table("reviews")
-                .update(
-                    {
-                        "rating": rating,
-                        "review": review_text,
-                        "updated_at": datetime.utcnow().isoformat(),
-                    }
+    # Try insert first; handle unique constraint (23505) by updating existing row
+    try:
+        res = client.table("reviews").insert(row).execute()
+        if getattr(res, "error", None):
+            err = res.error
+            code = None
+            try:
+                code = getattr(err, "code", None) or (
+                    err.get("code") if isinstance(err, dict) else None
                 )
-                .eq("product_id", product_id)
-                .eq("user_auth_id", user_id)
-                .execute()
-            )
-            if getattr(upd, "error", None):
-                raise HTTPException(status_code=400, detail=str(upd.error))
-            updated = True
-            data = upd.data
-        else:
+            except Exception:
+                pass
+            if code == "23505":
+                # fall through to update path below
+                raise Exception("UNIQUE_VIOLATION_23505")
             raise HTTPException(status_code=400, detail=str(err))
-    else:
         data = res.data
+    except Exception as e:
+        # postgrest may raise APIError directly; detect duplicate and update
+        msg = str(e)
+        code = getattr(e, "code", None)
+        is_duplicate = (
+            code == "23505"
+            or "duplicate key value" in msg
+            or "UNIQUE_VIOLATION_23505" in msg
+        )
+        if not is_duplicate:
+            raise HTTPException(status_code=400, detail=msg)
+        # Update existing review instead of failing
+        upd = (
+            client.table("reviews")
+            .update(
+                {
+                    "rating": rating,
+                    "review": review_text,
+                    "updated_at": datetime.utcnow().isoformat(),
+                }
+            )
+            .eq("product_id", product_id)
+            .eq("user_auth_id", user_id)
+            .execute()
+        )
+        if getattr(upd, "error", None):
+            raise HTTPException(status_code=400, detail=str(upd.error))
+        updated = True
+        data = upd.data
 
     # Determine review id
     rid = None
