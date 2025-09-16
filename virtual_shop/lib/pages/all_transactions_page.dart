@@ -1,11 +1,14 @@
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:intl/intl.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AllTransactionsPage extends StatefulWidget {
   const AllTransactionsPage({super.key});
@@ -19,8 +22,8 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
   List<dynamic> _transactions = [];
   bool _isLoading = true;
   String? _error;
-  String?
-  _authToken; // You need to implement getting this from your auth system
+  String? _authToken;
+  String? _sellerId; // To store the logged-in seller's ID
 
   // API configuration using your existing base URL logic
   static String get _baseUrl {
@@ -37,92 +40,130 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
       if (!kIsWeb && Platform.isAndroid) {
         final uri = Uri.parse(url);
         if (uri.host == '127.0.0.1' || uri.host == 'localhost') {
-          url = uri
-              .replace(host: dotenv.env['hostIp'] ?? '10.103.137.37')
-              .toString();
+          final hostIp = dotenv.env['hostIp'] ?? '192.168.0.154';
+          url = uri.replace(host: hostIp).toString();
+          print(
+            'DEBUG: Replaced localhost with: $hostIp, final URL: $url',
+          ); // Debug logging
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      print('DEBUG: Error in URL construction: $e'); // Debug logging
+    }
+    print('DEBUG: Final base URL: $url'); // Debug logging
     return url;
   }
 
   @override
   void initState() {
     super.initState();
-    _loadAuthToken();
-    _fetchTransactions();
+    print(
+      'DEBUG: SERVER_URL from env: ${dotenv.env['SERVER_URL']}',
+    ); // Debug logging
+    print('DEBUG: hostIp from env: ${dotenv.env['hostIp']}'); // Debug logging
+    _loadUserDataAndFetchTransactions();
   }
 
-  Future<void> _loadAuthToken() async {
-    // TODO: Implement your token retrieval logic here
-    // This could be from SharedPreferences, SecureStorage, etc.
-    // For now, this is a placeholder
-    _authToken = await _getStoredAuthToken();
+  Future<void> _loadUserDataAndFetchTransactions() async {
+    await _loadUserData();
+    if (mounted) {
+      _fetchTransactions();
+    }
   }
 
-  Future<String?> _getStoredAuthToken() async {
-    // TODO: Replace with your actual token storage implementation
-    // Example using SharedPreferences:
-    // final prefs = await SharedPreferences.getInstance();
-    // return prefs.getString('auth_token');
-    return 'your-jwt-token-here';
+  /// Loads auth/session using Supabase SDK first with SharedPreferences fallback.
+  Future<void> _loadUserData() async {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) {
+        _authToken = session.accessToken;
+        if (_authToken != null) {
+          try {
+            final decoded = JwtDecoder.decode(_authToken!);
+            _sellerId = decoded['sub'] ?? decoded['user_id'] ?? decoded['uid'];
+            print('DEBUG: Seller ID from Supabase session: $_sellerId');
+          } catch (e) {
+            print('DEBUG: Failed to decode Supabase JWT: $e');
+          }
+        }
+      }
+
+      if (_sellerId == null) {
+        final prefs = await SharedPreferences.getInstance();
+        final sessionData = prefs.getString('supabase_auth_token');
+        if (sessionData != null) {
+          try {
+            final stored = json.decode(sessionData);
+            final token = stored['access_token'];
+            if (token != null) {
+              _authToken = token;
+              final decoded = JwtDecoder.decode(token);
+              _sellerId =
+                  decoded['sub'] ?? decoded['user_id'] ?? decoded['uid'];
+              print('DEBUG: Seller ID from SharedPreferences: $_sellerId');
+            }
+          } catch (e) {
+            print('DEBUG: Error reading stored session: $e');
+          }
+        }
+      }
+
+      if (_sellerId == null) {
+        print('DEBUG: Seller ID still null after attempts.');
+      }
+    } catch (e) {
+      print('DEBUG: _loadUserData unexpected error: $e');
+    }
   }
 
-  Future<void> _fetchTransactions({
-    int limit = 50,
-    int offset = 0,
-    String? paymentStatus,
-    String? startDate,
-    String? endDate,
-  }) async {
-    if (_authToken == null) {
+  /// Fetches transactions for the logged-in seller.
+  Future<void> _fetchTransactions() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    if (_sellerId == null) {
       setState(() {
-        _error = 'Authentication token not found';
+        _error = 'Seller ID not found. Please log in again.';
         _isLoading = false;
       });
       return;
     }
 
     try {
-      final uri = Uri.parse('$_baseUrl/sellers/transactions').replace(
-        queryParameters: {
-          'limit': limit.toString(),
-          'offset': offset.toString(),
-          if (paymentStatus != null) 'payment_status': paymentStatus,
-          if (startDate != null) 'start_date': startDate,
-          if (endDate != null) 'end_date': endDate,
-        },
-      );
+      // Correctly form the URL with the seller's ID
+      final uri = Uri.parse('$_baseUrl/sellers/$_sellerId/transactions');
+      print('DEBUG: Making request to: $uri'); // Debug logging
+      print('DEBUG: Base URL is: $_baseUrl'); // Debug logging
 
-      final response = await http.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $_authToken',
-          'Content-Type': 'application/json',
-        },
-      );
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      if (_authToken != null) headers['Authorization'] = 'Bearer $_authToken';
+      print('DEBUG: Request headers keys: ${headers.keys}');
+      final response = await http.get(uri, headers: headers);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         setState(() {
           _transactions = data['transactions'] ?? [];
           _isLoading = false;
-          _error = null;
         });
       } else if (response.statusCode == 401) {
         setState(() {
-          _error = 'Authentication failed. Please login again.';
+          _error = 'Authentication failed. Please log in again.';
           _isLoading = false;
         });
       } else {
+        final errorBody = json.decode(response.body);
         setState(() {
-          _error = 'Failed to load transactions: ${response.statusCode}';
+          _error =
+              'Failed to load transactions: ${errorBody['detail'] ?? response.reasonPhrase}';
           _isLoading = false;
         });
       }
     } catch (e) {
       setState(() {
-        _error = 'Network error: $e';
+        _error = 'An error occurred: $e';
         _isLoading = false;
       });
     }
@@ -141,7 +182,7 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
   String _formatDate(String? dateString) {
     if (dateString == null) return 'Unknown date';
     try {
-      final DateTime date = DateTime.parse(dateString);
+      final DateTime date = DateTime.parse(dateString).toLocal();
       return DateFormat('EEEE, d MMMM').format(date);
     } catch (e) {
       return 'Unknown date';
@@ -149,10 +190,14 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
   }
 
   String _getCustomerName(Map<String, dynamic> transaction) {
-    // Since the API doesn't provide customer details directly,
-    // we'll need to extract from transaction ID or use a placeholder
-    final paymentId = transaction['payment']?['id']?.toString() ?? '';
-    return 'Customer #${paymentId.substring(0, 8)}';
+    final buyerInfo = transaction['buyer_info'] as Map<String, dynamic>? ?? {};
+    final fullName = buyerInfo['full_name']?.toString();
+    if (fullName != null && fullName.isNotEmpty) {
+      return fullName;
+    }
+    // Fallback if buyer name is not available
+    final orderId = transaction['order_id']?.toString() ?? 'N/A';
+    return 'Order #$orderId';
   }
 
   IconData _getPaymentIcon(String? paymentMethod) {
@@ -184,17 +229,8 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
   }
 
   String _getPaymentStatus(String? status) {
-    switch (status?.toLowerCase()) {
-      case 'completed':
-      case 'success':
-        return 'COMPLETED';
-      case 'pending':
-        return 'PENDING';
-      case 'failed':
-        return 'FAILED';
-      default:
-        return 'UNKNOWN';
-    }
+    if (status == null) return "UNKNOWN";
+    return status.toUpperCase();
   }
 
   @override
@@ -290,32 +326,38 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
 
     if (_error != null) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.error_outline,
-              color: Colors.red,
-              size: screenWidth * 0.12,
-            ),
-            SizedBox(height: screenHeight * 0.02),
-            Text(
-              _error!,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: screenWidth * 0.04,
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline,
+                color: Colors.red,
+                size: screenWidth * 0.12,
               ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: screenHeight * 0.02),
-            ElevatedButton(
-              onPressed: _fetchTransactions,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xff667eea),
+              SizedBox(height: screenHeight * 0.02),
+              Text(
+                _error!,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: screenWidth * 0.04,
+                ),
+                textAlign: TextAlign.center,
               ),
-              child: const Text('Retry', style: TextStyle(color: Colors.white)),
-            ),
-          ],
+              SizedBox(height: screenHeight * 0.02),
+              ElevatedButton(
+                onPressed: _fetchTransactions,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xff667eea),
+                ),
+                child: const Text(
+                  'Retry',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -366,16 +408,17 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    final payment = transaction['payment'] ?? {};
-    final orderMeta = transaction['order_meta'] ?? {};
-    final items = transaction['items'] as List<dynamic>? ?? [];
-
-    final paymentMethod = payment['payment_method']?.toString() ?? 'payment';
-    final amount = _formatAmount(payment['amount']);
-    final date = _formatDate(payment['paid_at'] ?? payment['created_at']);
+    final paymentMethod =
+        transaction['payment_method']?.toString() ?? 'payment';
+    // Use seller_item_total as this is what the seller receives
+    final amount = _formatAmount(transaction['seller_item_total']);
+    final date = _formatDate(
+      transaction['paid_at'] ?? transaction['created_at'],
+    );
     final customerName = _getCustomerName(transaction);
     final icon = _getPaymentIcon(paymentMethod);
     final color = _getPaymentColor(paymentMethod);
+    final itemCount = transaction['seller_item_count'] ?? 0;
 
     return Container(
       padding: EdgeInsets.all(screenWidth * 0.04),
@@ -414,10 +457,10 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
                     fontSize: screenWidth * 0.033,
                   ),
                 ),
-                if (items.isNotEmpty) ...[
+                if (itemCount > 0) ...[
                   SizedBox(height: screenHeight * 0.003),
                   Text(
-                    "${items.length} item${items.length > 1 ? 's' : ''}",
+                    "$itemCount item${itemCount > 1 ? 's' : ''}",
                     style: TextStyle(
                       color: Colors.grey,
                       fontSize: screenWidth * 0.03,
@@ -445,11 +488,11 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
                   vertical: screenHeight * 0.003,
                 ),
                 decoration: BoxDecoration(
-                  color: _getStatusColor(payment['payment_status']),
+                  color: _getStatusColor(transaction['payment_status']),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  _getPaymentStatus(payment['payment_status']),
+                  _getPaymentStatus(transaction['payment_status']),
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: screenWidth * 0.025,
@@ -466,8 +509,9 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
 
   Color _getStatusColor(String? status) {
     switch (status?.toLowerCase()) {
+      case 'paid':
       case 'completed':
-      case 'success':
+      case 'succeeded':
         return const Color(0xff38A169);
       case 'pending':
         return Colors.orange;
@@ -482,13 +526,6 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
     BuildContext context,
     Map<String, dynamic> transaction,
   ) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-
-    final payment = transaction['payment'] ?? {};
-    final orderMeta = transaction['order_meta'] ?? {};
-    final items = transaction['items'] as List<dynamic>? ?? [];
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -506,9 +543,9 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
             children: [
               // Handle bar
               Container(
-                margin: EdgeInsets.only(top: screenHeight * 0.01),
+                margin: EdgeInsets.only(top: 10),
                 height: 4,
-                width: screenWidth * 0.1,
+                width: 40,
                 decoration: BoxDecoration(
                   color: Colors.grey[600],
                   borderRadius: BorderRadius.circular(2),
@@ -516,51 +553,51 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
               ),
               // Header
               Padding(
-                padding: EdgeInsets.all(screenWidth * 0.05),
+                padding: const EdgeInsets.all(20),
                 child: Row(
                   children: [
                     GestureDetector(
                       onTap: () => Navigator.pop(context),
                       child: Container(
-                        padding: EdgeInsets.all(screenWidth * 0.02),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: Colors.grey[800],
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Icon(
-                          Icons.arrow_back_ios,
+                        child: const Icon(
+                          Icons.arrow_back_ios_new,
                           color: Colors.white,
-                          size: screenWidth * 0.04,
+                          size: 16,
                         ),
                       ),
                     ),
-                    SizedBox(width: screenWidth * 0.03),
-                    Expanded(
+                    const SizedBox(width: 12),
+                    const Expanded(
                       child: Text(
                         "Transaction Details",
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: screenWidth * 0.05,
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    SizedBox(width: screenWidth * 0.02),
+                    const SizedBox(width: 8),
                     Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: screenWidth * 0.02,
-                        vertical: screenHeight * 0.008,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: _getStatusColor(payment['payment_status']),
+                        color: _getStatusColor(transaction['payment_status']),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        _getPaymentStatus(payment['payment_status']),
-                        style: TextStyle(
+                        _getPaymentStatus(transaction['payment_status']),
+                        style: const TextStyle(
                           color: Colors.white,
-                          fontSize: screenWidth * 0.025,
+                          fontSize: 10,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -572,12 +609,12 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
               Expanded(
                 child: SingleChildScrollView(
                   controller: scrollController,
-                  padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
                   child: _buildTransactionDetailsContent(
                     context,
                     transaction,
-                    screenWidth,
-                    screenHeight,
+                    MediaQuery.of(context).size.width,
+                    MediaQuery.of(context).size.height,
                   ),
                 ),
               ),
@@ -594,13 +631,11 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
     double screenWidth,
     double screenHeight,
   ) {
-    final payment = transaction['payment'] ?? {};
-    final orderMeta = transaction['order_meta'] ?? {};
-    final items = transaction['items'] as List<dynamic>? ?? [];
-
-    final paymentMethod = payment['payment_method']?.toString() ?? 'payment';
+    final paymentMethod =
+        transaction['payment_method']?.toString() ?? 'payment';
     final color = _getPaymentColor(paymentMethod);
     final icon = _getPaymentIcon(paymentMethod);
+    final items = transaction['seller_items'] as List<dynamic>? ?? [];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -648,7 +683,7 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            _formatAmount(payment['amount']),
+                            _formatAmount(transaction['seller_item_total']),
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: screenWidth * 0.08,
@@ -678,7 +713,7 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
                     child: _buildTransactionInfoItem(
                       context,
                       "Transaction ID",
-                      "#${payment['transaction_id'] ?? payment['id'] ?? 'N/A'}",
+                      "#${transaction['transaction_id'] ?? transaction['id'] ?? 'N/A'}",
                       Icons.receipt_long,
                     ),
                   ),
@@ -687,7 +722,7 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
                     child: _buildTransactionInfoItem(
                       context,
                       "Date & Time",
-                      "${_formatDate(payment['paid_at'] ?? payment['created_at'])}\n${_formatTime(payment['paid_at'] ?? payment['created_at'])}",
+                      "${_formatDate(transaction['paid_at'] ?? transaction['created_at'])}\n${_formatTime(transaction['paid_at'] ?? transaction['created_at'])}",
                       Icons.access_time,
                     ),
                   ),
@@ -705,7 +740,11 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildSectionHeader(context, "Order Items", Icons.shopping_bag),
+                _buildSectionHeader(
+                  context,
+                  "Your Items in this Order",
+                  Icons.shopping_bag,
+                ),
                 SizedBox(height: screenHeight * 0.02),
                 ...items.map(
                   (item) => _buildOrderItem(context, item, screenWidth),
@@ -724,7 +763,12 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
         ],
 
         // Payment Information
-        _buildPaymentInformation(context, payment, screenWidth, screenHeight),
+        _buildPaymentInformation(
+          context,
+          transaction,
+          screenWidth,
+          screenHeight,
+        ),
         SizedBox(height: screenHeight * 0.025),
 
         // Action Buttons
@@ -779,7 +823,7 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              Icons.inventory,
+              Icons.inventory_2_outlined,
               color: Colors.white,
               size: screenWidth * 0.06,
             ),
@@ -790,7 +834,7 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  item['product_name']?.toString() ?? 'Unknown Product',
+                  item['name']?.toString() ?? 'Unknown Product',
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -828,22 +872,12 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
     double screenWidth,
     double screenHeight,
   ) {
-    final payment = transaction['payment'] ?? {};
-    final items = transaction['items'] as List<dynamic>? ?? [];
-
-    // Calculate totals from items
-    double subtotal = 0;
-    for (final item in items) {
-      final quantity =
-          double.tryParse(item['quantity']?.toString() ?? '0') ?? 0;
-      final unitPrice =
-          double.tryParse(item['unit_price']?.toString() ?? '0') ?? 0;
-      subtotal += quantity * unitPrice;
-    }
-
-    final totalAmount =
-        double.tryParse(payment['amount']?.toString() ?? '0') ?? 0;
-    final shippingTax = totalAmount - subtotal;
+    final orderInfo = transaction['order_info'] as Map<String, dynamic>? ?? {};
+    final sellerItemTotal =
+        double.tryParse(transaction['seller_item_total']?.toString() ?? '0') ??
+        0;
+    final totalOrderAmount =
+        double.tryParse(orderInfo['total']?.toString() ?? '0') ?? 0;
 
     return Container(
       padding: EdgeInsets.all(screenWidth * 0.04),
@@ -853,18 +887,22 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
       ),
       child: Column(
         children: [
-          _buildOrderSummaryRow(context, "Subtotal", _formatAmount(subtotal)),
-          if (shippingTax > 0)
+          _buildOrderSummaryRow(
+            context,
+            "Your Items Total",
+            _formatAmount(sellerItemTotal),
+          ),
+          if (totalOrderAmount > sellerItemTotal)
             _buildOrderSummaryRow(
               context,
-              "Fees & Tax",
-              _formatAmount(shippingTax),
+              "Total Order Amount",
+              _formatAmount(totalOrderAmount),
             ),
           const Divider(color: Colors.grey),
           _buildOrderSummaryRow(
             context,
-            "Total",
-            _formatAmount(totalAmount),
+            "Your Revenue",
+            _formatAmount(sellerItemTotal),
             isTotal: true,
           ),
         ],
@@ -980,7 +1018,7 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
   String _formatTime(String? dateString) {
     if (dateString == null) return '';
     try {
-      final DateTime date = DateTime.parse(dateString);
+      final DateTime date = DateTime.parse(dateString).toLocal();
       return DateFormat('HH:mm').format(date);
     } catch (e) {
       return '';
@@ -990,7 +1028,7 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
   String _formatDateTime(String? dateString) {
     if (dateString == null) return 'N/A';
     try {
-      final DateTime date = DateTime.parse(dateString);
+      final DateTime date = DateTime.parse(dateString).toLocal();
       return DateFormat('MMM dd, yyyy HH:mm').format(date);
     } catch (e) {
       return 'N/A';
@@ -1159,6 +1197,7 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
                 fontWeight: FontWeight.w600,
               ),
               overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.end,
             ),
           ),
         ],
@@ -1166,183 +1205,26 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
     );
   }
 
-  // Download receipt functionality
+  // Download receipt functionality (placeholder)
   void _downloadReceipt(
     BuildContext context,
     Map<String, dynamic> transaction,
   ) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text(
-          "Download Receipt",
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              "Choose receipt format:",
-              style: TextStyle(color: Colors.white),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.picture_as_pdf, color: Colors.red),
-              title: const Text(
-                "PDF Format",
-                style: TextStyle(color: Colors.white),
-              ),
-              subtitle: const Text(
-                "Detailed receipt with company logo",
-                style: TextStyle(color: Colors.grey),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _generatePDFReceipt(context, transaction);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.email, color: Color(0xff667eea)),
-              title: const Text(
-                "Email Receipt",
-                style: TextStyle(color: Colors.white),
-              ),
-              subtitle: const Text(
-                "Send to customer's email",
-                style: TextStyle(color: Colors.grey),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _emailReceipt(context, transaction);
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-          ),
-        ],
+    final transactionId =
+        transaction['transaction_id'] ?? transaction['id'] ?? 'Unknown';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text("Receipt download started for #$transactionId"),
+        backgroundColor: const Color(0xff667eea),
       ),
     );
   }
 
-  // Generate PDF receipt
-  void _generatePDFReceipt(
-    BuildContext context,
-    Map<String, dynamic> transaction,
-  ) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Color(0xff667eea)),
-            SizedBox(height: 16),
-            Text(
-              "Generating PDF Receipt...",
-              style: TextStyle(color: Colors.white),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    Future.delayed(const Duration(seconds: 2), () {
-      Navigator.pop(context);
-      final payment = transaction['payment'] ?? {};
-      final transactionId =
-          payment['transaction_id'] ?? payment['id'] ?? 'Unknown';
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: Colors.white),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  "Receipt downloaded for transaction #$transactionId",
-                ),
-              ),
-            ],
-          ),
-          backgroundColor: const Color(0xff38A169),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    });
-  }
-
-  // Email receipt
-  void _emailReceipt(BuildContext context, Map<String, dynamic> transaction) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text(
-          "Email Receipt",
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: "Enter email address",
-                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                prefixIcon: const Icon(Icons.email, color: Color(0xff667eea)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey[700]!),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey[700]!),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xff667eea)),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Receipt sent successfully!"),
-                  backgroundColor: Color(0xff38A169),
-                ),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xff667eea),
-            ),
-            child: const Text("Send", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Initiate refund functionality
+  // Initiate refund functionality (placeholder)
   void _initiateRefund(BuildContext context, Map<String, dynamic> transaction) {
-    final payment = transaction['payment'] ?? {};
-    final amount = _formatAmount(payment['amount']);
+    final amount = _formatAmount(transaction['seller_item_total']);
+    final transactionId =
+        transaction['transaction_id'] ?? transaction['id'] ?? 'Unknown';
 
     showDialog(
       context: context,
@@ -1356,13 +1238,8 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              "Are you sure you want to initiate a refund for $amount?",
+              "Are you sure you want to initiate a refund for $amount for transaction #$transactionId?",
               style: const TextStyle(color: Colors.white),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              "This action cannot be undone and will process the refund to the customer's original payment method.",
-              style: TextStyle(color: Colors.grey),
             ),
           ],
         ),
@@ -1374,8 +1251,6 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
-              final transactionId =
-                  payment['transaction_id'] ?? payment['id'] ?? 'Unknown';
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
@@ -1387,7 +1262,7 @@ class _AllTransactionsPageState extends State<AllTransactionsPage> {
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
             child: const Text(
-              "Initiate Refund",
+              "Confirm Refund",
               style: TextStyle(color: Colors.white),
             ),
           ),

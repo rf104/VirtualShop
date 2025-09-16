@@ -85,6 +85,9 @@ dependencies:
   material_color_utilities: ^0.11.1
   motor: ^1.0.0-dev.9
   dynamic_color: ^1.8.1
+  jwt_decoder: ^2.0.1
+  model_viewer_plus: ^1.9.3
+  file_picker: ^8.1.2
 
 dev_dependencies:
   flutter_test:

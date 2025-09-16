@@ -1,3 +1,4 @@
+from fastapi import UploadFile as _UploadFile, File as _File
 from typing import Optional, List
 import io
 import uuid
@@ -545,6 +546,138 @@ def get_product(product_id: uuid.UUID):
     return p
 
 
+# ---------------------- 3D MODEL (AR) ENDPOINTS ----------------------
+
+@app.get("/products/{product_id}/3dmodel")
+def get_product_3d_model(product_id: str):
+    """Return latest 3D model link for a product (if any).
+
+    Response: { "product_id": str, "model_link": str } or 404 if none.
+    """
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    res = client.table("tdmodel").select("id,model_link,product_id,created_at").eq(
+        "product_id", product_id).order("created_at", desc=True).limit(1).execute()
+    if getattr(res, "error", None):
+        raise HTTPException(status_code=400, detail=str(res.error))
+    rows = res.data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="3D model not found")
+    row = rows[0]
+    return {"product_id": row.get("product_id"), "model_link": row.get("model_link")}
+
+
+@app.post("/products/{product_id}/3dmodel")
+async def upload_product_3d_model(
+    product_id: str,
+    file: _UploadFile = _File(...),
+    authorization: str | None = Header(default=None),
+):
+    """Upload a 3D model (glb/gltf/usdz) for a product and record link in tdmodel table.
+
+    - Requires bearer token; user must own the product (auth_id matches token user id).
+    - Stores file in Supabase Storage bucket `tdmodel` (env TDMODEL_BUCKET overrides).
+    - Inserts a row into `tdmodel` table (does not delete older rows; latest is used by GET).
+    Returns: { ok: true, model_link: str }
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    # Verify product ownership
+    pres = client.table("products").select("id,auth_id").eq(
+        "id", product_id).limit(1).execute()
+    if getattr(pres, "error", None):
+        raise HTTPException(status_code=400, detail=str(pres.error))
+    rows = pres.data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Product not found")
+    prod = rows[0]
+    if str(prod.get("auth_id")) != str(user_id):
+        raise HTTPException(status_code=403, detail="Not owner of product")
+
+    # Validate file extension
+    filename = file.filename or "model.glb"
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "glb"
+    if ext not in {"glb", "gltf", "usdz"}:
+        raise HTTPException(
+            status_code=400, detail="Unsupported model type (allowed: glb,gltf,usdz)")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file upload")
+    if len(content) > 50 * 1024 * 1024:  # 50MB guard
+        raise HTTPException(
+            status_code=400, detail="File too large (max 50MB)")
+
+    bucket = os.getenv("TDMODEL_BUCKET", "tdmodel")
+    _ensure_bucket(client, bucket)
+
+    key = f"{product_id}/{uuid.uuid4()}.{ext}"
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+            tmp.write(content)
+            tmp.flush()
+            tmp_path = tmp.name
+        # Upload
+        client.storage.from_(bucket).upload(
+            file=tmp_path,
+            path=key,
+            file_options={
+                "content-type": file.content_type or ("model/gltf-binary" if ext == "glb" else "application/octet-stream"),
+                "upsert": False,
+            },
+        )
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+    url_resp = client.storage.from_(bucket).get_public_url(key)
+    if isinstance(url_resp, str):
+        model_url = url_resp
+    elif isinstance(url_resp, dict):
+        model_url = url_resp.get("publicUrl") or url_resp.get(
+            "public_url") or url_resp.get("url")
+    else:
+        model_url = str(url_resp)
+
+    # Insert row into tdmodel table
+    row = {"model_link": model_url, "product_id": product_id, "auth_id": user_id}
+    ins = client.table("tdmodel").insert(row).execute()
+    if getattr(ins, "error", None):
+        raise HTTPException(status_code=400, detail=str(ins.error))
+
+    # Optionally create a notification to followers / shoppers (skipped for now)
+    try:
+        create_notification(
+            recipient_auth_id=user_id,
+            notification_type="model_upload",
+            title="3D Model Uploaded",
+            message=f"3D model added for product {product_id[:8]}",
+            sender_auth_id=user_id,
+            entity_type="product",
+            entity_id=product_id,
+            metadata={"model_link": model_url},
+        )
+    except Exception:
+        pass
+
+    return {"ok": True, "model_link": model_url}
+
+
 def _get_clip() -> SentenceTransformer:
     if Models.clip is None:
         # OpenAI CLIP ViT-B/32. SentenceTransformers handles image+text.
@@ -637,32 +770,70 @@ def get_product_reviews(product_id: str, limit: int | None = None):
     if client is None:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
+    # Helper: execute a supabase query with retries on transient HTTP2 disconnects
+    def _exec_with_retry(builder, max_attempts: int = 3):
+        last_err = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return builder.execute()
+            except httpx.RemoteProtocolError as e:  # type: ignore
+                last_err = e
+                if attempt == max_attempts:
+                    raise
+                continue  # retry
+            except Exception as e:  # other exceptions: do not retry extensively
+                last_err = e
+                if attempt == max_attempts:
+                    raise
+                continue
+        if last_err:
+            raise last_err  # pragma: no cover
+
     q = client.table("reviews").select(
         "id,product_id,user_auth_id,rating,review,created_at"
     ).eq("product_id", product_id).order("created_at", desc=True)
     if limit is not None and int(limit) > 0:
         q = q.limit(int(limit))
-    res = q.execute()
+    try:
+        res = _exec_with_retry(q)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail=f"Failed to load reviews: {e}")
     if getattr(res, "error", None):
         raise HTTPException(status_code=400, detail=str(res.error))
     rows = res.data or []
 
-    # Summary across ALL reviews for this product (unbounded)
-    sum_cnt = client.table("reviews").select(
-        "rating").eq("product_id", product_id).execute()
+    # Summary across ALL reviews for this product (unbounded). If this fails, fall back to limited rows.
     cnt = 0
     avg = 0.0
-    if not getattr(sum_cnt, "error", None):
-        ratings = sum_cnt.data or []
-        cnt = len(ratings)
+    try:
+        sum_builder = client.table("reviews").select(
+            "rating").eq("product_id", product_id)
+        sum_cnt = _exec_with_retry(sum_builder)
+        if not getattr(sum_cnt, "error", None):
+            ratings = sum_cnt.data or []
+            cnt = len(ratings)
+            if cnt:
+                s = 0
+                for r in ratings:
+                    try:
+                        s += int(r.get("rating") or 0)
+                    except Exception:
+                        pass
+                avg = float(s) / float(cnt) if cnt else 0.0
+    except Exception as e:
+        # Graceful degradation: compute summary from currently fetched (possibly limited) rows
+        cnt = len(rows)
         if cnt:
             s = 0
-            for r in ratings:
+            for r in rows:
                 try:
                     s += int(r.get("rating") or 0)
                 except Exception:
                     pass
             avg = float(s) / float(cnt) if cnt else 0.0
+        # Log error for observability (print since no logger configured)
+        print(f"[reviews] summary fallback due to error: {e}")
 
     # Enrich with user info from public.users by auth_id
     auth_ids = list({r.get("user_auth_id")
