@@ -380,26 +380,71 @@ def list_products():
     client = getattr(app.state, "supabase", None)
     if client is None:
         raise HTTPException(status_code=500, detail="Supabase not configured")
-    # Fetch products and left join first image per product via nested select
-    # Note: PostgREST doesn't do arbitrary joins; we rely on a view or nested select
-    # Here we select products and then fetch first image per product in a second query
-    prod_res = client.table("products").select(
-        "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating").execute()
-    if getattr(prod_res, "error", None):
-        raise HTTPException(status_code=400, detail=str(prod_res.error))
-    prods = prod_res.data or []
-    out = []
-    for p in prods:
-        img_res = client.table("product_images").select("image_url").eq(
-            "product_id", p["id"]).order("created_at", desc=False).limit(1).execute()
-        image_url = None
-        if not getattr(img_res, "error", None) and img_res.data:
-            image_url = img_res.data[0].get("image_url")
-        obj = dict(p)
-        if image_url:
-            obj["image_url"] = image_url
-        out.append(obj)
-    return out
+    try:
+        prod_res = (
+            client.table("products")
+            .select(
+                "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
+            )
+            .execute()
+        )
+        if getattr(prod_res, "error", None):
+            raise HTTPException(status_code=400, detail=str(prod_res.error))
+        prods = prod_res.data or []
+        if not prods:
+            return []
+
+        # Batch fetch first image per product (single query) instead of N queries
+        product_ids = [p["id"] for p in prods if p.get("id")]
+        img_map: dict[str, str] = {}
+        try:
+            img_res = (
+                client.table("product_images")
+                .select("product_id,image_url,created_at")
+                .in_("product_id", product_ids)
+                .order("created_at", desc=False)
+                .execute()
+            )
+            if not getattr(img_res, "error", None):
+                seen = set()
+                for row in img_res.data or []:
+                    pid = str(row.get("product_id"))
+                    if pid and pid not in seen:
+                        img_map[pid] = row.get("image_url")
+                        seen.add(pid)
+        except Exception as e:
+            # Log but don't fail entire endpoint
+            print(f"Debug: product_images batch fetch failed: {e}")
+
+        out = []
+        for p in prods:
+            obj = dict(p)
+            pid = str(p.get("id"))
+            if pid in img_map:
+                obj["image_url"] = img_map[pid]
+            out.append(obj)
+        return out
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Handle httpx RemoteProtocolError or other transient failures gracefully
+        print(f"Debug: Exception in list_products (fallback without images): {e}")
+        try:
+            # Attempt a minimal retry without images
+            prod_res = (
+                client.table("products")
+                .select(
+                    "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
+                )
+                .execute()
+            )
+            if getattr(prod_res, "error", None):
+                raise HTTPException(status_code=400, detail=str(prod_res.error))
+            return prod_res.data or []
+        except Exception as inner:
+            raise HTTPException(
+                status_code=500, detail=f"Failed to list products: {inner}"
+            )
 
 
 @app.get("/products/by_ids")
@@ -728,17 +773,82 @@ def submit_product_review(product_id: str, payload: dict, authorization: str | N
         "rating": rating,
         "review": review_text,
     }
+    updated = False
+    # Try insert first
     res = client.table("reviews").insert(row).execute()
     if getattr(res, "error", None):
-        raise HTTPException(status_code=400, detail=str(res.error))
-    data = res.data
-    # Return the inserted row id if available
+        err = res.error
+        # Detect unique violation (Postgres code 23505)
+        code = None
+        try:
+            code = getattr(err, "code", None) or (
+                err.get("code") if isinstance(err, dict) else None
+            )
+        except Exception:
+            pass
+        if code == "23505":
+            # Update existing review instead of failing
+            upd = (
+                client.table("reviews")
+                .update(
+                    {
+                        "rating": rating,
+                        "review": review_text,
+                        "updated_at": datetime.utcnow().isoformat(),
+                    }
+                )
+                .eq("product_id", product_id)
+                .eq("user_auth_id", user_id)
+                .execute()
+            )
+            if getattr(upd, "error", None):
+                raise HTTPException(status_code=400, detail=str(upd.error))
+            updated = True
+            data = upd.data
+        else:
+            raise HTTPException(status_code=400, detail=str(err))
+    else:
+        data = res.data
+
+    # Determine review id
     rid = None
     if isinstance(data, list) and data:
         rid = data[0].get("id")
     elif isinstance(data, dict):
         rid = data.get("id")
-    return {"ok": True, "id": rid}
+
+    # Recompute aggregate rating for product
+    agg = (
+        client.table("reviews").select("rating").eq("product_id", product_id).execute()
+    )
+    avg_rating = None
+    review_count = 0
+    if not getattr(agg, "error", None):
+        ratings = agg.data or []
+        review_count = len(ratings)
+        if review_count:
+            total = 0
+            for r in ratings:
+                try:
+                    total += int(r.get("rating") or 0)
+                except Exception:
+                    pass
+            avg_rating = round(total / review_count, 1)
+            # Persist on products.rating if different
+            try:
+                client.table("products").update({"rating": avg_rating}).eq(
+                    "id", product_id
+                ).execute()
+            except Exception:
+                pass
+
+    return {
+        "ok": True,
+        "id": rid,
+        "updated": updated,
+        "avg_rating": avg_rating,
+        "review_count": review_count,
+    }
 
 
 # ---------------------- CART API (bridges to Supabase RPC) ----------------------
@@ -1829,7 +1939,7 @@ def get_user_profile(user_id: str, authorization: str | None = Header(default=No
     auth_user_id = _get_user_from_authorization(authorization)
     if not auth_user_id:
         raise HTTPException(status_code=401, detail="Authorization required")
-    
+
     # Allow users to access their own profile
     if auth_user_id != user_id:
         raise HTTPException(status_code=403, detail="Can only access your own profile")
@@ -1841,23 +1951,23 @@ def get_user_profile(user_id: str, authorization: str | None = Header(default=No
     try:
         # Query by auth_id (not user_id)
         response = client.table("users").select("*").eq("auth_id", user_id).execute()
-        
+
         if getattr(response, "error", None):
             raise HTTPException(status_code=400, detail=str(response.error))
-        
+
         users = response.data or []
         if not users:
             raise HTTPException(status_code=404, detail="User not found")
-        
+
         user_data = users[0]
         return user_data
-        
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
-    
-    
+
+
 # Update User Profile Info
 
 

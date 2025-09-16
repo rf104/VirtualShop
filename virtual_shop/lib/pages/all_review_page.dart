@@ -1,70 +1,415 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+import 'package:jwt_decoder/jwt_decoder.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-class AllReviewPage extends StatelessWidget {
-  const AllReviewPage({super.key});
+class AllReviewPage extends StatefulWidget {
+  final String sellerId;
+  const AllReviewPage({super.key, required this.sellerId});
 
+  @override
+  State<AllReviewPage> createState() => _AllReviewPageState();
+}
+
+class _AllReviewPageState extends State<AllReviewPage> {
+  // Data
+  List<Map<String, dynamic>> _reviews = [];
+  bool _isLoading = true;
+  String? _error;
+  double _averageRating = 0.0;
+  Map<String, int> _ratingCounts = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0};
+
+  // Auth/session
+  String? _authToken;
+  String? _sellerId; // resolved seller id
+
+  // Base URL logic mirrored from transactions page
+  static String get _baseUrl {
+    final fromServer = const String.fromEnvironment('API_BASE_URL');
+    // Fallback chain (env var, then default)
+    String raw = fromServer.isNotEmpty ? fromServer : 'http://127.0.0.1:8000';
+    raw = raw.trim();
+    if (raw.endsWith('/')) raw = raw.substring(0, raw.length - 1);
+    try {
+      if (!kIsWeb && Platform.isAndroid) {
+        final uri = Uri.parse(raw);
+        if (uri.host == 'localhost' || uri.host == '127.0.0.1') {
+          // Allow manual override via env hostIp (optional) else 10.0.2.2 for emulator
+          final hostIp = dotenv.env['hostIp'] ?? '192.168.0.154';
+          raw = uri.replace(host: hostIp).toString();
+          debugPrint('REVIEWS DEBUG: Replaced localhost with: $hostIp => $raw');
+        }
+      }
+    } catch (e) {
+      debugPrint('REVIEWS DEBUG: URL parse error: $e');
+    }
+    debugPrint('REVIEWS DEBUG: Final base URL: $raw');
+    return raw;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserDataAndFetch();
+  }
+
+  Future<void> _loadUserDataAndFetch() async {
+    await _loadUserData();
+    if (mounted) {
+      _fetchReviews();
+    }
+  }
+
+  Future<void> _loadUserData() async {
+    // If sellerId explicitly provided use it; else attempt session + fallback
+    if (widget.sellerId.isNotEmpty) {
+      _sellerId = widget.sellerId;
+    }
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) {
+        _authToken = session.accessToken;
+        if (_sellerId == null) {
+          try {
+            final decoded = JwtDecoder.decode(_authToken!);
+            _sellerId = decoded['sub'] ?? decoded['user_id'] ?? decoded['uid'];
+            debugPrint(
+              'REVIEWS DEBUG: Seller ID from Supabase session: $_sellerId',
+            );
+          } catch (e) {
+            debugPrint('REVIEWS DEBUG: JWT decode error: $e');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('REVIEWS DEBUG: session error: $e');
+    }
+    if (_sellerId == null) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final stored = prefs.getString('supabase_auth_token');
+        if (stored != null) {
+          final decodedJson = json.decode(stored);
+          final token = decodedJson['access_token'];
+          if (token != null) {
+            _authToken = token;
+            try {
+              final decoded = JwtDecoder.decode(token);
+              _sellerId =
+                  decoded['sub'] ?? decoded['user_id'] ?? decoded['uid'];
+              debugPrint(
+                'REVIEWS DEBUG: Seller ID from SharedPreferences: $_sellerId',
+              );
+            } catch (e) {
+              debugPrint('REVIEWS DEBUG: fallback JWT decode error: $e');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('REVIEWS DEBUG: SharedPreferences error: $e');
+      }
+    }
+    if (_sellerId == null) {
+      debugPrint('REVIEWS DEBUG: Seller ID unresolved.');
+    }
+  }
+
+  Future<void> _fetchReviews() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    if (_sellerId == null || _sellerId!.isEmpty) {
+      setState(() {
+        _error = 'Seller ID not found. Please log in again.';
+        _isLoading = false;
+      });
+      return;
+    }
+    try {
+      final uri = Uri.parse('$_baseUrl/sellers/$_sellerId/reviews');
+      debugPrint('REVIEWS DEBUG: Requesting $uri with sellerId=$_sellerId');
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      if (_authToken != null) headers['Authorization'] = 'Bearer $_authToken';
+      final resp = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 15));
+      debugPrint('REVIEWS DEBUG: Status ${resp.statusCode}');
+      debugPrint('REVIEWS DEBUG: Body length ${resp.body.length}');
+      debugPrint(
+        'REVIEWS DEBUG: Raw body (first 400 chars): ' +
+            (resp.body.length > 400
+                ? resp.body.substring(0, 400) + '...'
+                : resp.body),
+      );
+      if (resp.statusCode == 200) {
+        Map<String, dynamic> data;
+        try {
+          data = json.decode(resp.body);
+        } catch (e) {
+          setState(() {
+            _error = 'Parse error: $e';
+            _isLoading = false;
+          });
+          return;
+        }
+        if (data.isEmpty) {
+          debugPrint('REVIEWS DEBUG: Empty JSON object received');
+        }
+        final serverTotal = data['total_reviews'];
+        final serverAvg = data['average_rating'];
+        final serverCounts = data['rating_counts'];
+        debugPrint(
+          'REVIEWS DEBUG: server total_reviews=$serverTotal avg=$serverAvg counts=$serverCounts',
+        );
+
+        final rawReviews = data['reviews'];
+        if (rawReviews == null) {
+          debugPrint('REVIEWS DEBUG: reviews field missing');
+        }
+        final reviews = List<Map<String, dynamic>>.from(rawReviews ?? []);
+        debugPrint('REVIEWS DEBUG: Parsed reviews length=${reviews.length}');
+        if (serverTotal != null && serverTotal != reviews.length) {
+          debugPrint(
+            'REVIEWS DEBUG: MISMATCH server total_reviews ($serverTotal) != parsed (${reviews.length})',
+          );
+        }
+
+        // Prefer server stats if provided & valid
+        if (serverAvg is num) {
+          _averageRating = serverAvg.toDouble();
+        }
+        if (serverCounts is Map) {
+          try {
+            _ratingCounts = {
+              '1': (serverCounts['1'] ?? serverCounts[1] ?? 0) as int,
+              '2': (serverCounts['2'] ?? serverCounts[2] ?? 0) as int,
+              '3': (serverCounts['3'] ?? serverCounts[3] ?? 0) as int,
+              '4': (serverCounts['4'] ?? serverCounts[4] ?? 0) as int,
+              '5': (serverCounts['5'] ?? serverCounts[5] ?? 0) as int,
+            };
+          } catch (e) {
+            debugPrint('REVIEWS DEBUG: rating_counts parse error: $e');
+          }
+        }
+
+        // If no server stats, compute locally
+        if (serverAvg == null || serverCounts == null) {
+          double totalRating = 0;
+          final localCounts = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0};
+          for (final r in reviews) {
+            final raw = r['rating'];
+            int rating;
+            if (raw is int) {
+              rating = raw;
+            } else if (raw is double) {
+              rating = raw.round();
+            } else if (raw is String) {
+              rating = int.tryParse(raw) ?? 0;
+            } else {
+              rating = 0;
+            }
+            r['rating'] = rating; // normalize
+            if (rating >= 1 && rating <= 5) {
+              totalRating += rating;
+              localCounts['$rating'] = (localCounts['$rating'] ?? 0) + 1;
+            }
+            r.putIfAbsent('name', () => 'Anonymous');
+            r.putIfAbsent('verified', () => true);
+          }
+          if (serverAvg == null) {
+            _averageRating = reviews.isEmpty
+                ? 0.0
+                : totalRating / reviews.length;
+          }
+          if (serverCounts == null) {
+            _ratingCounts = localCounts.map((k, v) => MapEntry(k, v));
+          }
+        } else {
+          // Even if server stats present, still normalize each review's rating & required fields
+          for (final r in reviews) {
+            final raw = r['rating'];
+            if (raw is double) r['rating'] = raw.round();
+            if (r['name'] == null) r['name'] = 'Anonymous';
+            if (r['verified'] == null) r['verified'] = true;
+          }
+        }
+
+        setState(() {
+          _reviews = reviews;
+          _isLoading = false;
+        });
+      } else if (resp.statusCode == 401) {
+        setState(() {
+          _error = 'Authentication failed. Please log in again!';
+          _isLoading = false;
+        });
+      } else {
+        String detail = 'HTTP ${resp.statusCode}';
+        try {
+          detail = (json.decode(resp.body)['detail'] ?? detail).toString();
+        } catch (_) {}
+        setState(() {
+          _error = 'Failed to load reviews: $detail';
+          _isLoading = false;
+        });
+      }
+    } on TimeoutException {
+      setState(() {
+        _error = 'Request timed out. Check network/server.';
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'An error occurred: $e';
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _formatDate(String? dateString) {
+    if (dateString == null) return 'Unknown date';
+    try {
+      final date = DateTime.parse(dateString);
+      return DateFormat('MMMM d, yyyy').format(date);
+    } catch (e) {
+      return dateString;
+    }
+  }
+
+  // Replace existing build with list builder pattern
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        elevation: 0,
-        leading: GestureDetector(
-          onTap: () => Navigator.pop(context),
-          child: Container(
-            margin: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.grey[800],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios,
-              color: Colors.white,
-              size: 18,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildHeader(context),
+            Expanded(child: _buildReviewsList(context)),
+            const SizedBox(height: 70),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.grey[800],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios,
+                color: Colors.white,
+                size: 16,
+              ),
             ),
           ),
-        ),
-        title: const Text(
-          "All Reviews",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'All Reviews',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
-        ),
-        actions: [
           Container(
-            margin: const EdgeInsets.only(right: 16, top: 8, bottom: 8),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: const Color(0xffFFD700),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Text(
-              "4.8",
-              style: TextStyle(
+            child: Text(
+              _averageRating.toStringAsFixed(1),
+              style: const TextStyle(
                 color: Colors.black,
-                fontSize: 14,
                 fontWeight: FontWeight.w600,
+                fontSize: 14,
               ),
             ),
           ),
         ],
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(20),
-        itemCount: 15, // Mock data
-        itemBuilder: (context, index) {
-          final review = _getReviewData(index);
-          return Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            child: GestureDetector(
-              onTap: () => _showReviewDetails(context, review),
-              child: _buildReviewItem(review, showArrow: true),
+    );
+  }
+
+  Widget _buildReviewsList(BuildContext context) {
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xff667eea)),
+      );
+    }
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 56),
+              const SizedBox(height: 16),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _fetchReviews,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xff667eea),
+                ),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_reviews.isEmpty) {
+      return const Center(
+        child: Text('No reviews yet', style: TextStyle(color: Colors.white)),
+      );
+    }
+    return RefreshIndicator(
+      color: const Color(0xff667eea),
+      backgroundColor: Colors.black,
+      onRefresh: _fetchReviews,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        children: [
+          _buildRatingSummary(),
+          const SizedBox(height: 16),
+          ..._reviews.map(
+            (r) => Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              child: GestureDetector(
+                onTap: () => _showReviewDetails(context, r),
+                child: _buildReviewItem(r, showArrow: true),
+              ),
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -164,9 +509,9 @@ class AllReviewPage extends StatelessWidget {
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
                             colors: [
-                              _getRatingColor(review['rating']),
+                              _getRatingColor(review['rating'] ?? 0),
                               _getRatingColor(
-                                review['rating'],
+                                review['rating'] ?? 0,
                               ).withOpacity(0.8),
                             ],
                             begin: Alignment.topLeft,
@@ -176,7 +521,7 @@ class AllReviewPage extends StatelessWidget {
                           boxShadow: [
                             BoxShadow(
                               color: _getRatingColor(
-                                review['rating'],
+                                review['rating'] ?? 0,
                               ).withOpacity(0.3),
                               blurRadius: 15,
                               offset: const Offset(0, 8),
@@ -191,23 +536,7 @@ class AllReviewPage extends StatelessWidget {
                                 color: Colors.white.withOpacity(0.2),
                                 shape: BoxShape.circle,
                               ),
-                              child: CircleAvatar(
-                                radius: 30,
-                                backgroundImage: NetworkImage(
-                                  review['avatar'] ?? '',
-                                ),
-                                onBackgroundImageError:
-                                    (exception, stackTrace) {
-                                      // Handle image loading error
-                                    },
-                                child: review['avatar'] == null
-                                    ? const Icon(
-                                        Icons.person,
-                                        color: Colors.white,
-                                        size: 30,
-                                      )
-                                    : null,
-                              ),
+                              child: _buildAvatar(review['avatar'], radius: 30),
                             ),
                             const SizedBox(width: 16),
                             Expanded(
@@ -250,7 +579,7 @@ class AllReviewPage extends StatelessWidget {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    "Reviewed on ${review['date'] ?? 'Unknown date'}",
+                                    "Reviewed on ${_formatDate(review['date'])}",
                                     style: TextStyle(
                                       color: Colors.white.withOpacity(0.8),
                                       fontSize: 12,
@@ -334,88 +663,13 @@ class AllReviewPage extends StatelessWidget {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              review['review'],
+                              review['review'] ?? 'No review text',
                               style: TextStyle(
                                 color: Colors.white.withOpacity(0.9),
                                 fontSize: 16,
                                 height: 1.5,
                               ),
                             ),
-                            if (review['pros'] != null ||
-                                review['cons'] != null) ...[
-                              const SizedBox(height: 20),
-                              if (review['pros'] != null) ...[
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: const BoxDecoration(
-                                        color: Color(0xff38A169),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.thumb_up,
-                                        color: Colors.white,
-                                        size: 12,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      "What they liked:",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  review['pros'],
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.8),
-                                    fontSize: 14,
-                                    height: 1.4,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                              ],
-                              if (review['cons'] != null) ...[
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(6),
-                                      decoration: const BoxDecoration(
-                                        color: Colors.orange,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.thumb_down,
-                                        color: Colors.white,
-                                        size: 12,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      "Areas for improvement:",
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  review['cons'],
-                                  style: TextStyle(
-                                    color: Colors.white.withOpacity(0.8),
-                                    fontSize: 14,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ],
-                            ],
                           ],
                         ),
                       ),
@@ -461,18 +715,9 @@ class AllReviewPage extends StatelessWidget {
                                       color: Colors.grey[800],
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.network(
-                                        review['product']['image'],
-                                        fit: BoxFit.cover,
-                                        errorBuilder:
-                                            (context, error, stackTrace) =>
-                                                const Icon(
-                                                  Icons.image,
-                                                  color: Colors.grey,
-                                                ),
-                                      ),
+                                    child: const Icon(
+                                      Icons.image,
+                                      color: Colors.grey,
                                     ),
                                   ),
                                   const SizedBox(width: 16),
@@ -482,7 +727,8 @@ class AllReviewPage extends StatelessWidget {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          review['product']['name'],
+                                          review['product']['name'] ??
+                                              'Unknown Product',
                                           style: const TextStyle(
                                             color: Colors.white,
                                             fontWeight: FontWeight.w600,
@@ -491,7 +737,7 @@ class AllReviewPage extends StatelessWidget {
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          "Category: ${review['product']['category']}",
+                                          "Category: ${review['product']['category'] ?? 'N/A'}",
                                           style: TextStyle(
                                             color: Colors.white.withOpacity(
                                               0.7,
@@ -501,7 +747,7 @@ class AllReviewPage extends StatelessWidget {
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          "৳${review['product']['price']}",
+                                          "৳${review['product']['price'] ?? '0'}",
                                           style: const TextStyle(
                                             color: Color(0xff38A169),
                                             fontSize: 14,
@@ -518,61 +764,6 @@ class AllReviewPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 20),
                       ],
-
-                      // Customer Insights
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[900],
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey[800]!),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Row(
-                              children: [
-                                Icon(
-                                  Icons.insights,
-                                  color: Color(0xff4facfe),
-                                  size: 20,
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  "Customer Insights",
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            _buildInsightRow(
-                              "Total Reviews",
-                              "${review['totalReviews'] ?? 5}",
-                            ),
-                            _buildInsightRow(
-                              "Average Rating",
-                              "${review['avgRating'] ?? 4.2}/5",
-                            ),
-                            _buildInsightRow(
-                              "Customer Since",
-                              review['customerSince'] ?? "Jan 2023",
-                            ),
-                            _buildInsightRow(
-                              "Order History",
-                              "${review['orderCount'] ?? 12} orders",
-                            ),
-                            _buildInsightRow(
-                              "Response Rate",
-                              "${review['responseRate'] ?? 95}%",
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
 
                       // Action Buttons
                       Row(
@@ -659,38 +850,6 @@ class AllReviewPage extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildInsightRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
-                fontSize: 14,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -904,16 +1063,7 @@ class AllReviewPage extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundImage: NetworkImage(review['avatar'] ?? ''),
-            onBackgroundImageError: (exception, stackTrace) {
-              // Handle image loading error
-            },
-            child: review['avatar'] == null
-                ? const Icon(Icons.person, color: Colors.white, size: 20)
-                : null,
-          ),
+          _buildAvatar(review['avatar'], radius: 22),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -949,7 +1099,7 @@ class AllReviewPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  review['date'] ?? 'No date',
+                  _formatDate(review['date']),
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.7),
                     fontSize: 12,
@@ -965,28 +1115,17 @@ class AllReviewPage extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                if (review['verified'] == true)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.verified,
-                          color: Color(0xff38A169),
-                          size: 12,
-                        ),
-                        const SizedBox(width: 3),
-                        Text(
-                          "Verified Purchase",
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.7),
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
+                if (review['product'] != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    review['product']['name'] ?? 'Unknown Product',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 12,
                     ),
+                    overflow: TextOverflow.ellipsis,
                   ),
+                ],
               ],
             ),
           ),
@@ -1004,113 +1143,156 @@ class AllReviewPage extends StatelessWidget {
     );
   }
 
-  // Helper method to provide enhanced review data
-  Map<String, dynamic> _getReviewData(int index) {
-    final reviewers = [
-      {
-        'name': 'Ibnu Rahman',
-        'avatar': 'https://randomuser.me/api/portraits/men/2.jpg',
-        'rating': 5,
-        'date': 'March 21, 2024',
-        'review':
-            'Great product quality and fast delivery! The wireless headphones exceeded my expectations. Sound quality is crystal clear and battery life is amazing.',
-        'verified': true,
-        'pros':
-            'Excellent sound quality, comfortable fit, long battery life, fast shipping',
-        'cons': null,
-        'totalReviews': 12,
-        'avgRating': 4.6,
-        'customerSince': 'Jan 2023',
-        'orderCount': 8,
-        'responseRate': 98,
-        'email': 'ibnu.rahman@email.com',
-        'phone': '+880 1700000001',
-        'product': {
-          'name': 'Premium Wireless Headphones',
-          'category': 'Electronics',
-          'price': '4,500',
-          'image':
-              'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop',
-        },
-      },
-      {
-        'name': 'Sarah Ahmed',
-        'avatar': 'https://randomuser.me/api/portraits/women/3.jpg',
-        'rating': 4,
-        'date': 'March 20, 2024',
-        'review':
-            'Good service overall, but packaging could be improved. The product arrived safely but the box was a bit damaged.',
-        'verified': true,
-        'pros': 'Good product quality, reasonable price',
-        'cons':
-            'Packaging needs improvement, delivery was slower than expected',
-        'totalReviews': 5,
-        'avgRating': 4.2,
-        'customerSince': 'Mar 2023',
-        'orderCount': 3,
-        'responseRate': 85,
-        'email': 'sarah.ahmed@email.com',
-        'phone': '+880 1700000002',
-        'product': {
-          'name': 'Smartphone Protective Case',
-          'category': 'Accessories',
-          'price': '850',
-          'image':
-              'https://images.unsplash.com/photo-1556656793-08538906a9f8?w=100&h=100&fit=crop',
-        },
-      },
-      {
-        'name': 'John Doe',
-        'avatar': 'https://randomuser.me/api/portraits/men/4.jpg',
-        'rating': 5,
-        'date': 'March 19, 2024',
-        'review':
-            'Amazing experience! Will definitely order again. The customer service was outstanding and the product quality is top-notch.',
-        'verified': true,
-        'pros':
-            'Excellent customer service, high quality product, fast response time',
-        'cons': null,
-        'totalReviews': 18,
-        'avgRating': 4.8,
-        'customerSince': 'Sep 2022',
-        'orderCount': 15,
-        'responseRate': 95,
-        'email': 'john.doe@email.com',
-        'phone': '+880 1700000003',
-        'product': {
-          'name': 'Bluetooth Wireless Speaker',
-          'category': 'Electronics',
-          'price': '2,800',
-          'image':
-              'https://images.unsplash.com/photo-1608043152269-4236a9f8?w=100&h=100&fit=crop',
-        },
-      },
-      {
-        'name': 'Alice Smith',
-        'avatar': 'https://randomuser.me/api/portraits/women/5.jpg',
-        'rating': 3,
-        'date': 'March 18, 2024',
-        'review':
-            'Product is okay, delivery was a bit slow. Expected better quality for the price point.',
-        'verified': false,
-        'pros': 'Decent functionality',
-        'cons': 'Slow delivery, quality could be better for the price',
-        'totalReviews': 2,
-        'avgRating': 3.5,
-        'customerSince': 'Feb 2024',
-        'orderCount': 2,
-        'responseRate': 70,
-        'email': 'alice.smith@email.com',
-        'phone': '+880 1700000004',
-        'product': {
-          'name': 'Fitness Tracker Watch',
-          'category': 'Wearables',
-          'price': '3,200',
-          'image':
-              'https://images.unsplash.com/photo-1434494878577-86c23bcb06b9?w=100&h=100&fit=crop',
-        },
-      },
-    ];
-    return reviewers[index % reviewers.length];
+  Widget _buildRatingSummary() {
+    final total = _reviews.length;
+    if (total == 0) {
+      return const SizedBox.shrink();
+    }
+    Widget bar(int stars) {
+      final count = _ratingCounts['$stars'] ?? 0;
+      final pct = total > 0 ? count / total : 0.0;
+      return Row(
+        children: [
+          SizedBox(
+            width: 28,
+            child: Text(
+              '$stars★',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ),
+          Expanded(
+            child: Stack(
+              children: [
+                Container(
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[800],
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+                FractionallySizedBox(
+                  widthFactor: pct,
+                  child: Container(
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: _getRatingColor(stars),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: 8),
+          SizedBox(
+            width: 32,
+            child: Text(
+              '$count',
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.8),
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[850],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[700]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                _averageRating.toStringAsFixed(1),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 40,
+                  fontWeight: FontWeight.bold,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: List.generate(
+                        5,
+                        (i) => Icon(
+                          i < _averageRating.round()
+                              ? Icons.star_rounded
+                              : Icons.star_border_rounded,
+                          color: const Color(0xffFFD700),
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$total reviews',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Column(
+            children: [5, 4, 3, 2, 1]
+                .map(
+                  (s) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: bar(s),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper to build avatar safely without triggering assertion
+  Widget _buildAvatar(dynamic urlRaw, {double radius = 22}) {
+    // Prefer profile_image if map provided
+    if (urlRaw is Map) {
+      final dynamic p = urlRaw['profile_image'];
+      if (p is String && p.trim().isNotEmpty) {
+        urlRaw = p.trim();
+      }
+    }
+    final String? url = (urlRaw is String && urlRaw.trim().isNotEmpty)
+        ? urlRaw.trim()
+        : null;
+    if (url != null) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: Colors.grey[700],
+        backgroundImage: NetworkImage(url),
+      );
+    }
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Colors.grey[700],
+      child: Icon(
+        Icons.person,
+        color: Colors.white.withOpacity(0.9),
+        size: radius * 0.9,
+      ),
+    );
   }
 }

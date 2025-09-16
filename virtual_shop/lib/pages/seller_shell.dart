@@ -34,7 +34,7 @@ class _SellerShellState extends State<SellerShell> {
         page = const AllTransactionsPage();
         break;
       case 'reviews':
-        page = const AllReviewPage();
+        page = AllReviewPage(sellerId: settings.arguments as String? ?? '');
         break;
       case 'add_product':
         page = const AddProductPage();

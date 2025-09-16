@@ -1,7 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 // Pages are pushed via named routes inside SellerShell's nested Navigator.
 import 'package:virtual_shop/pages/my_products_sheet.dart';
 
@@ -17,6 +24,19 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
   String _displayName = 'Seller';
   ImageProvider? _avatarProvider;
 
+  // Recent transactions state
+  List<dynamic> _recentTransactions = [];
+  bool _txLoading = false;
+  String? _txError;
+  String? _sellerAuthId;
+
+  // Recent reviews state
+  List<Map<String, dynamic>> _recentReviews = [];
+  bool _rvLoading = false;
+  String? _rvError;
+  double _avgRating = 0.0;
+  int _totalReviews = 0;
+
   Map<String, String>? _headersForUrl(String url) {
     final session = Supabase.instance.client.auth.currentSession;
     if (session == null) return null;
@@ -24,6 +44,28 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
       return {'Authorization': 'Bearer ${session.accessToken}'};
     }
     return null;
+  }
+
+  static String get _baseUrl {
+    final fromServer = dotenv.env['SERVER_URL']?.trim();
+    final fromBackend = dotenv.env['BACKEND_URL']?.trim();
+    String raw = (fromServer?.isNotEmpty == true)
+        ? fromServer!
+        : (fromBackend?.isNotEmpty == true
+              ? fromBackend!
+              : 'http://127.0.0.1:8000');
+    raw = raw.replaceFirst(RegExp(r'^(https?://)\s+'), r'$1');
+    String url = raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
+    try {
+      if (!kIsWeb && Platform.isAndroid) {
+        final uri = Uri.parse(url);
+        if (uri.host == '127.0.0.1' || uri.host == 'localhost') {
+          final hostIp = dotenv.env['hostIp'] ?? '192.168.0.154';
+          url = uri.replace(host: hostIp).toString();
+        }
+      }
+    } catch (_) {}
+    return url;
   }
 
   @override
@@ -36,6 +78,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
+      _sellerAuthId = user.id;
       final meta = user.userMetadata ?? {};
       final dynamic nameCandidate =
           meta['name'] ?? meta['fullName'] ?? user.email;
@@ -74,12 +117,325 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     } catch (_) {
       // Leave defaults on error
     }
+    // Fetch recent transactions after loading auth user
+    _fetchRecentTransactions();
+    _fetchRecentReviews();
+  }
+
+  Future<void> _fetchRecentTransactions() async {
+    if (_sellerAuthId == null) return;
+    setState(() {
+      _txLoading = true;
+      _txError = null;
+    });
+    try {
+      final uri = Uri.parse('$_baseUrl/sellers/$_sellerAuthId/transactions');
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null)
+        headers['Authorization'] = 'Bearer ${session.accessToken}';
+      final resp = await http.get(uri, headers: headers);
+      if (resp.statusCode == 200) {
+        final body = json.decode(resp.body) as Map<String, dynamic>;
+        final list = (body['transactions'] as List<dynamic>? ?? []);
+        setState(() {
+          _recentTransactions = list.take(2).toList();
+          _txLoading = false;
+        });
+      } else {
+        setState(() {
+          _txError = 'Failed (${resp.statusCode})';
+          _txLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _txError = 'Error: $e';
+        _txLoading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchRecentReviews() async {
+    if (_sellerAuthId == null) return;
+    setState(() {
+      _rvLoading = true;
+      _rvError = null;
+    });
+    try {
+      final uri = Uri.parse('$_baseUrl/sellers/$_sellerAuthId/reviews');
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null)
+        headers['Authorization'] = 'Bearer ${session.accessToken}';
+      final resp = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 15));
+      if (resp.statusCode == 200) {
+        final data = json.decode(resp.body) as Map<String, dynamic>;
+        final reviews = List<Map<String, dynamic>>.from(data['reviews'] ?? []);
+        // Normalize rating and safe fields
+        for (final r in reviews) {
+          final raw = r['rating'];
+          if (raw is double) r['rating'] = raw.round();
+          if (raw is String) r['rating'] = int.tryParse(raw) ?? 0;
+          r['name'] ??= 'Anonymous';
+          r['verified'] ??= true;
+        }
+        setState(() {
+          _recentReviews = reviews.take(2).toList();
+          _avgRating = (data['average_rating'] is num)
+              ? (data['average_rating'] as num).toDouble()
+              : 0.0;
+          _totalReviews = data['total_reviews'] is int
+              ? data['total_reviews']
+              : reviews.length;
+          _rvLoading = false;
+        });
+      } else {
+        setState(() {
+          _rvError = 'Failed (${resp.statusCode})';
+          _rvLoading = false;
+        });
+      }
+    } on TimeoutException {
+      setState(() {
+        _rvError = 'Timeout fetching reviews';
+        _rvLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _rvError = 'Error: $e';
+        _rvLoading = false;
+      });
+    }
   }
 
   String _getCurrentDateFormatted() {
     final now = DateTime.now();
     final formatter = DateFormat('EEE, dd MMMM');
     return formatter.format(now).toUpperCase();
+  }
+
+  String _formatAmount(num? amount) {
+    if (amount == null) return '৳0';
+    return '৳${amount.toStringAsFixed(0)}';
+  }
+
+  String _formatTxDate(String? dateString) {
+    if (dateString == null) return '';
+    try {
+      return DateFormat('MMM d').format(DateTime.parse(dateString).toLocal());
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'completed':
+      case 'paid':
+      case 'succeeded':
+        return const Color(0xff38A169);
+      case 'pending':
+        return Colors.orange;
+      case 'failed':
+      case 'refunded':
+        return Colors.redAccent;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Widget _buildTxSkeleton() => Container(
+    height: 56,
+    decoration: BoxDecoration(
+      color: Colors.grey[800],
+      borderRadius: BorderRadius.circular(12),
+    ),
+    padding: const EdgeInsets.symmetric(horizontal: 14),
+    child: Row(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.grey[700],
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(height: 10, width: 110, color: Colors.grey[700]),
+              const SizedBox(height: 6),
+              Container(height: 8, width: 70, color: Colors.grey[700]),
+            ],
+          ),
+        ),
+        Container(height: 12, width: 50, color: Colors.grey[700]),
+      ],
+    ),
+  );
+
+  Widget _buildRecentTxItem(Map<String, dynamic> tx) {
+    final method = (tx['payment_method'] ?? 'Pay').toString();
+    final amountStr = _formatAmount(
+      double.tryParse(tx['seller_item_total']?.toString() ?? '0') ?? 0,
+    );
+    final name =
+        tx['buyer_display_name'] ??
+        tx['buyer_info']?['full_name'] ??
+        'Customer';
+    final status = (tx['payment_status'] ?? '').toString();
+    final dateStr = _formatTxDate(tx['paid_at'] ?? tx['created_at']);
+    final code = tx['transaction_code'] ?? '';
+    final color = _statusColor(status);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.grey[850],
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey[800]!),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(colors: [color, color.withOpacity(0.7)]),
+            ),
+            child: const Icon(Icons.payment, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    if (code.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[800],
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          code,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      method.toUpperCase(),
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 11,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      dateStr,
+                      style: const TextStyle(
+                        color: Colors.white38,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                amountStr,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  status.toUpperCase(),
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentTransactionsSection() {
+    if (_txLoading) {
+      return Column(
+        children: [
+          _buildTxSkeleton(),
+          const SizedBox(height: 8),
+          _buildTxSkeleton(),
+        ],
+      );
+    }
+    if (_txError != null) {
+      return Text(
+        _txError!,
+        style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+      );
+    }
+    if (_recentTransactions.isEmpty) {
+      return const Text(
+        'No recent transactions yet',
+        style: TextStyle(color: Colors.white54, fontSize: 13),
+      );
+    }
+    return Column(
+      children: _recentTransactions
+          .map<Widget>((tx) => _buildRecentTxItem(tx as Map<String, dynamic>))
+          .toList(),
+    );
   }
 
   Widget _buildSellerDashboard() {
@@ -665,133 +1021,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  // First Transaction
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[800],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey[700]!),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                            color: Color(0xff667eea),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.payment,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "Payment from Ibnu",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize:
-                                      MediaQuery.of(context).size.width *
-                                      0.04, // Responsive font size
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                "Friday, 21 March",
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.7),
-                                  fontSize:
-                                      MediaQuery.of(context).size.width *
-                                      0.0325, // Responsive font size
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          "৳2,000",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize:
-                                MediaQuery.of(context).size.width *
-                                0.04, // Responsive font size
-                            color: const Color(0xff38A169),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // Second Transaction
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[800],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey[700]!),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                            color: Color(0xff764ba2),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.credit_card,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "Payment from Sarah",
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize:
-                                      MediaQuery.of(context).size.width *
-                                      0.04, // Responsive font size
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                "Thursday, 20 March",
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.7),
-                                  fontSize:
-                                      MediaQuery.of(context).size.width *
-                                      0.0325, // Responsive font size
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          "৳1,500",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize:
-                                MediaQuery.of(context).size.width *
-                                0.04, // Responsive font size
-                            color: const Color(0xff38A169),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _buildRecentTransactionsSection(),
                 ],
               ),
             ),
@@ -867,26 +1097,6 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                 ),
                               ),
                             ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xff667eea),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            "10",
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize:
-                                  MediaQuery.of(context).size.width *
-                                  0.04, // Responsive font size
-                              color: Colors.white,
-                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -989,10 +1199,10 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                             ),
                             const SizedBox(width: 16),
                             Expanded(
-                              child: const Column(
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
+                                  const Text(
                                     "Recent Reviews",
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
@@ -1002,8 +1212,10 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   Text(
-                                    "Customer feedback",
-                                    style: TextStyle(
+                                    _totalReviews > 0
+                                        ? "Based on $_totalReviews reviews"
+                                        : "Customer feedback",
+                                    style: const TextStyle(
                                       color: Colors.grey,
                                       fontSize: 14,
                                     ),
@@ -1016,10 +1228,39 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                         ),
                       ),
                       const SizedBox(width: 8),
+                      if (!_rvLoading && _rvError == null && _totalReviews > 0)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xffFFD700),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _avgRating.toStringAsFixed(1),
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.star_rounded,
+                                color: Colors.black,
+                                size: 14,
+                              ),
+                            ],
+                          ),
+                        ),
+                      const SizedBox(width: 8),
                       GestureDetector(
-                        onTap: () {
-                          _showAllReviews(context);
-                        },
+                        onTap: () => _showAllReviews(context),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -1053,101 +1294,34 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                     ],
                   ),
                   const SizedBox(height: 20),
-
-                  // Overall Rating Summary
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[800],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: const Color(0xffFFD700).withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
+                  if (_rvLoading)
+                    Column(
                       children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    "4.8",
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize:
-                                          MediaQuery.of(context).size.width *
-                                          0.07, // Responsive font size
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: List.generate(
-                                            5,
-                                            (index) => Icon(
-                                              index < 5
-                                                  ? Icons.star_rounded
-                                                  : Icons.star_border_rounded,
-                                              color: const Color(0xffFFD700),
-                                              size: 14,
-                                            ),
-                                          ),
-                                        ),
-                                        Text(
-                                          "Based on 1,247 reviews",
-                                          style: TextStyle(
-                                            color: Colors.white.withOpacity(
-                                              0.7,
-                                            ),
-                                            fontSize: 11,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xff38A169),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            "Excellent",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize:
-                                  MediaQuery.of(context).size.width *
-                                  0.025, // Responsive font size
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
+                        _buildReviewSkeleton(),
+                        const SizedBox(height: 12),
+                        _buildReviewSkeleton(),
                       ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Recent Review 1
-                  _buildReviewItem(_getReviewData(0)),
-                  const SizedBox(height: 12),
-
-                  // Recent Review 2
-                  _buildReviewItem(_getReviewData(1)),
+                    )
+                  else if (_rvError != null)
+                    Text(
+                      _rvError!,
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 12,
+                      ),
+                    )
+                  else if (_recentReviews.isEmpty)
+                    const Text(
+                      'No reviews yet',
+                      style: TextStyle(color: Colors.white54, fontSize: 13),
+                    )
+                  else ...[
+                    for (int i = 0; i < _recentReviews.length; i++) ...[
+                      _buildDynamicReviewItem(_recentReviews[i]),
+                      if (i < _recentReviews.length - 1)
+                        const SizedBox(height: 12),
+                    ],
+                  ],
                 ],
               ),
             ),
@@ -1338,42 +1512,14 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     }
   }
 
-  // Helper method to get review data
-  Map<String, dynamic> _getReviewData(int index) {
-    final reviewers = [
-      {
-        'name': 'Ibnu Rahman',
-        'avatar': 'https://randomuser.me/api/portraits/men/2.jpg',
-        'rating': 5,
-        'date': 'March 21, 2024',
-        'review':
-            'Great product quality and fast delivery! The wireless headphones exceeded my expectations.',
-        'verified': true,
-      },
-      {
-        'name': 'Sarah Ahmed',
-        'avatar': 'https://randomuser.me/api/portraits/women/3.jpg',
-        'rating': 4,
-        'date': 'March 20, 2024',
-        'review':
-            'Good service overall, but packaging could be improved. The product arrived safely.',
-        'verified': true,
-      },
-      {
-        'name': 'John Doe',
-        'avatar': 'https://randomuser.me/api/portraits/men/4.jpg',
-        'rating': 5,
-        'date': 'March 19, 2024',
-        'review':
-            'Amazing experience! Will definitely order again. The customer service was outstanding.',
-        'verified': true,
-      },
-    ];
-    return reviewers[index % reviewers.length];
-  }
-
-  // Helper method to build a review item
-  Widget _buildReviewItem(Map<String, dynamic> review) {
+  // Dynamic review item using fetched data
+  Widget _buildDynamicReviewItem(Map<String, dynamic> review) {
+    final avatar = review['profile_image'] ?? review['avatar'];
+    final rating = (review['rating'] is int)
+        ? review['rating']
+        : (review['rating'] is double)
+        ? (review['rating'] as double).round()
+        : int.tryParse(review['rating']?.toString() ?? '0') ?? 0;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1386,11 +1532,11 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
         children: [
           CircleAvatar(
             radius: 22,
-            backgroundImage: NetworkImage(review['avatar'] ?? ''),
-            onBackgroundImageError: (exception, stackTrace) {
-              // Handle image loading error
-            },
-            child: review['avatar'] == null
+            backgroundColor: Colors.grey[700],
+            backgroundImage: (avatar is String && avatar.trim().isNotEmpty)
+                ? NetworkImage(avatar)
+                : null,
+            child: (avatar is! String || avatar.trim().isEmpty)
                 ? const Icon(Icons.person, color: Colors.white, size: 20)
                 : null,
           ),
@@ -1403,7 +1549,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                   children: [
                     Expanded(
                       child: Text(
-                        review['name'] ?? 'Anonymous',
+                        (review['name'] ?? 'Anonymous').toString(),
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
@@ -1417,7 +1563,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                       children: List.generate(
                         5,
                         (index) => Icon(
-                          index < (review['rating'] ?? 0)
+                          index < rating
                               ? Icons.star_rounded
                               : Icons.star_border_rounded,
                           color: const Color(0xffFFD700),
@@ -1429,7 +1575,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  review['date'] ?? 'No date',
+                  _formatReviewDate(review['date']),
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.7),
                     fontSize: 12,
@@ -1437,7 +1583,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  review['review'] ?? 'No review text',
+                  (review['review'] ?? '').toString(),
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.9),
                     fontSize: 14,
@@ -1474,6 +1620,48 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
       ),
     );
   }
+
+  String _formatReviewDate(dynamic raw) {
+    if (raw == null) return 'Unknown date';
+    try {
+      final dt = DateTime.parse(raw.toString());
+      return DateFormat('MMM d, yyyy').format(dt.toLocal());
+    } catch (_) {
+      return raw.toString();
+    }
+  }
+
+  Widget _buildReviewSkeleton() => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.grey[800],
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: Colors.grey[700]!),
+    ),
+    child: Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: Colors.grey[700],
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(height: 10, width: 120, color: Colors.grey[700]),
+              const SizedBox(height: 6),
+              Container(height: 8, width: 180, color: Colors.grey[700]),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 // Analytics Card with same styling
