@@ -1820,39 +1820,44 @@ def get_sellers():
     sellers = seller_res.data or []
     return sellers
 
-
 @app.get("/users/{user_id}")
 def get_user_profile(user_id: str, authorization: str | None = Header(default=None)):
     """
     Fetch all info of a specific user by auth_id from Supabase 'users' table.
     """
-    # Verify the user is accessing their own profile
+    # Verify the user is requesting their own profile or has proper authorization
     auth_user_id = _get_user_from_authorization(authorization)
-    if not auth_user_id or auth_user_id != user_id:
-        raise HTTPException(
-            status_code=401, detail="Unauthorized: can only access your own profile")
+    if not auth_user_id:
+        raise HTTPException(status_code=401, detail="Authorization required")
+    
+    # Allow users to access their own profile
+    if auth_user_id != user_id:
+        raise HTTPException(status_code=403, detail="Can only access your own profile")
 
     client = getattr(app.state, "supabase", None)
     if client is None:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        user_res = (
-            client.table("users")
-            .select("*")
-            .eq("auth_id", user_id)   # filter by auth_id
-            .single()            # expect exactly one row
-            .execute()
-        )
+        # Query by auth_id (not user_id)
+        response = client.table("users").select("*").eq("auth_id", user_id).execute()
+        
+        if getattr(response, "error", None):
+            raise HTTPException(status_code=400, detail=str(response.error))
+        
+        users = response.data or []
+        if not users:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_data = users[0]
+        return user_data
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Supabase query failed: {str(e)}")
-
-    if getattr(user_res, "error", None):
-        raise HTTPException(status_code=404, detail="User not found")
-
-    return user_res.data
-
+        raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+    
+    
 # Update User Profile Info
 
 

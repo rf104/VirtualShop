@@ -595,12 +595,18 @@ class _ProfilePageState extends State<ProfilePage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ElevatedButton.icon(
-              onPressed: () {
-                showDialog(
+              onPressed: () async {
+                // Wait for result from edit dialog
+                final result = await showDialog<bool>(
                   context: context,
                   builder: (context) => const EditProfileFinal(),
                   barrierDismissible: false,
                 );
+                
+                // If edit was successful, reload profile
+                if (result == true) {
+                  await _loadUserProfile();
+                }
               },
               icon: const Icon(Icons.edit, color: Colors.white),
               label: const Text(
