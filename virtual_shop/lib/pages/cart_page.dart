@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:virtual_shop/utils/cart_api.dart';
 
 class CartPage extends StatefulWidget {
-  const CartPage({super.key});
+  final VoidCallback? onCartChanged;
+
+  const CartPage({super.key, this.onCartChanged});
 
   @override
   State<CartPage> createState() => _CartPageState();
@@ -64,6 +66,7 @@ class _CartPageState extends State<CartPage> {
     setState(() {
       _cartItems[index]['quantity']++;
     });
+    widget.onCartChanged?.call();
   }
 
   void _decrementQuantity(int index) {
@@ -72,12 +75,14 @@ class _CartPageState extends State<CartPage> {
         _cartItems[index]['quantity']--;
       }
     });
+    widget.onCartChanged?.call();
   }
 
   void _removeItem(int index) {
     setState(() {
       _cartItems.removeAt(index);
     });
+    widget.onCartChanged?.call();
   }
 
   @override
@@ -294,6 +299,7 @@ class _CartPageState extends State<CartPage> {
                   const SnackBar(content: Text('Checkout successful')),
                 );
                 await _loadCart();
+                widget.onCartChanged?.call();
                 // Optionally navigate to a confirmation page
               } catch (e) {
                 if (!mounted) return;
