@@ -19,13 +19,15 @@ class ApiService {
               : 'http://127.0.0.1:8000');
     raw = raw.replaceFirst(RegExp(r'^(https?://)\s+'), r'$1');
     String url = raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
-    
+
     try {
       if (!kIsWeb && Platform.isAndroid) {
         final uri = Uri.parse(url);
         if (uri.host == '127.0.0.1' || uri.host == 'localhost') {
           final hostIp = dotenv.env['hostIp']?.trim() ?? '192.168.0.102';
-          print('DEBUG: Using hostIp = $hostIp from env: ${dotenv.env['hostIp']}');
+          print(
+            'DEBUG: Using hostIp = $hostIp from env: ${dotenv.env['hostIp']}',
+          );
           url = uri.replace(host: hostIp).toString();
           print('DEBUG: Final URL = $url');
         }
@@ -84,11 +86,13 @@ class ApiService {
     if (email != null && email.isNotEmpty) request.fields['email'] = email;
     if (phone != null && phone.isNotEmpty) request.fields['phone'] = phone;
     if (dob != null && dob.isNotEmpty) request.fields['dob'] = dob;
-    if (address != null && address.isNotEmpty) request.fields['address'] = address;
+    if (address != null && address.isNotEmpty)
+      request.fields['address'] = address;
 
     // Add profile image if provided
     if (avatar != null) {
-      final mimeType = lookupMimeType(avatar.path) ?? 'application/octet-stream';
+      final mimeType =
+          lookupMimeType(avatar.path) ?? 'application/octet-stream';
       final mimeParts = mimeType.split('/');
       final fileStream = http.ByteStream(avatar.openRead());
       final fileLength = await avatar.length();
@@ -108,12 +112,14 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final result = jsonDecode(response.body);
-      
+
       // Return the updated data if available
-      if (result['data'] != null && result['data'] is List && result['data'].isNotEmpty) {
+      if (result['data'] != null &&
+          result['data'] is List &&
+          result['data'].isNotEmpty) {
         return result['data'][0] as Map<String, dynamic>;
       }
-      
+
       return result as Map<String, dynamic>;
     } else {
       throw Exception('Update failed: ${response.statusCode} ${response.body}');

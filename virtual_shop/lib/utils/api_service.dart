@@ -5,7 +5,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ApiService {
   // static const String baseUrl = "http://192.168.0.154:8000";
-  static final String baseUrl = "http://${dotenv.env['hostIp']}:${dotenv.env['PORT']}";
+  static final String baseUrl =
+      "http://${dotenv.env['hostIp']}:${dotenv.env['PORT']}";
 
   // Fetch all sellers
   static Future<List<Seller>> getAllSellers() async {

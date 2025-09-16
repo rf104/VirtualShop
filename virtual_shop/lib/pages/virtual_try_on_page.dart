@@ -1070,7 +1070,7 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
               final uri = Uri.parse(url);
               if (uri.host == '127.0.0.1' || uri.host == 'localhost') {
                 url = uri
-                    .replace(host: dotenv.env['hostIp'] ?? '192.168.0.154')
+                    .replace(host: dotenv.env['hostIp'] ?? '10.103.137.37')
                     .toString();
               }
             }
