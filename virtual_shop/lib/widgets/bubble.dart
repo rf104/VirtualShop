@@ -1,19 +1,38 @@
 import 'dart:io';
-
 import 'package:flutter/material.dart';
+import 'package:oc_liquid_glass/oc_liquid_glass.dart';
 import '../models/message.dart';
+import 'glass_container.dart';
 
 /// A widget to display a single chat message bubble.
 class Bubble extends StatelessWidget {
   final ChatMessage message;
+  final bool
+  captionStyle; // If true, render a lighter caption style (for model text responses)
 
-  const Bubble({super.key, required this.message});
+  const Bubble({super.key, required this.message, this.captionStyle = false});
 
   @override
   Widget build(BuildContext context) {
     final bool isUser = message.author == Role.user;
 
-    return Container(
+    final baseRadius = 22.0;
+    final bubbleColor = isUser
+        ? Colors.blueAccent.withOpacity(0.35)
+        : (captionStyle
+              ? Colors.white.withOpacity(0.18)
+              : Colors.purpleAccent.withOpacity(0.18));
+
+    final textStyle = TextStyle(
+      color: Colors.white,
+      fontSize: captionStyle ? 14 : 16,
+      fontWeight: captionStyle ? FontWeight.w500 : FontWeight.w400,
+      height: 1.3,
+    );
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
       margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
       child: Row(
         mainAxisAlignment: isUser
@@ -23,54 +42,55 @@ class Bubble extends StatelessWidget {
         children: [
           if (!isUser) ...[
             CircleAvatar(
-              backgroundColor: Colors.grey[800],
-              child: const Icon(Icons.android, color: Colors.white),
+              radius: captionStyle ? 16 : 18,
+              backgroundColor: Colors.deepPurple.withOpacity(0.25),
+              child: Icon(
+                Icons.auto_awesome,
+                color: Colors.purpleAccent.shade100,
+                size: captionStyle ? 16 : 20,
+              ),
             ),
             const SizedBox(width: 8.0),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                vertical: 10.0,
-                horizontal: 15.0,
+            child: GlassContainer(
+              borderRadius: baseRadius,
+              color: bubbleColor,
+              settings: const OCLiquidGlassSettings(
+                blurRadiusPx: 12,
+                lightbandColor: Colors.white24,
+                specAngle: 65,
+                specStrength: 0.35,
               ),
-              decoration: BoxDecoration(
-                color: isUser ? Colors.blue[800] : Colors.grey[800],
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(20.0),
-                  topRight: const Radius.circular(20.0),
-                  bottomLeft: Radius.circular(isUser ? 20.0 : 5.0),
-                  bottomRight: Radius.circular(isUser ? 5.0 : 20.0),
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: captionStyle ? 8 : 12,
+                  horizontal: captionStyle ? 12 : 16,
                 ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Display image if attached
-                  if (message.image != null) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8.0),
-                      child: Image.file(
-                        File(message.image!.path),
-                        fit: BoxFit.cover,
-                        width: 200,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (message.image != null) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12.0),
+                        child: Image.file(
+                          File(message.image!.path),
+                          fit: BoxFit.cover,
+                          width: 220,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8.0),
+                      const SizedBox(height: 8.0),
+                    ],
+                    Text(message.text.trim(), style: textStyle),
                   ],
-                  // Display text message
-                  Text(
-                    message.text,
-                    style: const TextStyle(color: Colors.white, fontSize: 16.0),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
           if (isUser) ...[
             const SizedBox(width: 8.0),
             CircleAvatar(
-              backgroundColor: Colors.blue[600],
+              backgroundColor: Colors.blue.withOpacity(0.35),
               child: const Icon(Icons.person, color: Colors.white),
             ),
           ],

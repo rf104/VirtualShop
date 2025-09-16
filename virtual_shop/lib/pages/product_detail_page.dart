@@ -462,7 +462,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const ChatPage(),
+                              builder: (context) =>
+                                  ChatPage(product: widget.product),
                             ),
                           );
                         },
