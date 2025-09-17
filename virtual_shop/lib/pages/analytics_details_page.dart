@@ -1,5 +1,15 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Analytics Details for the Seller (dynamic)
 class AnalyticsDetailsPage extends StatefulWidget {
   const AnalyticsDetailsPage({super.key});
 
@@ -8,7 +18,127 @@ class AnalyticsDetailsPage extends StatefulWidget {
 }
 
 class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
-  String _selectedPeriod = "Monthly";
+  String _selectedPeriod = 'Monthly'; // Daily | Weekly | Monthly
+
+  bool _loading = false;
+  String? _error;
+
+  // Raw data
+  List<Map<String, dynamic>> _transactions = [];
+
+  static String get _baseUrl {
+    final fromServer = dotenv.env['SERVER_URL']?.trim();
+    final fromBackend = dotenv.env['BACKEND_URL']?.trim();
+    String raw = (fromServer != null && fromServer.isNotEmpty)
+        ? fromServer
+        : (fromBackend != null && fromBackend.isNotEmpty
+              ? fromBackend
+              : 'http://127.0.0.1:8000');
+    raw = raw.replaceAll(RegExp(r'\s+'), '');
+    if (raw.endsWith('/')) raw = raw.substring(0, raw.length - 1);
+    try {
+      if (!kIsWeb && Platform.isAndroid) {
+        final uri = Uri.parse(raw);
+        if (uri.host == 'localhost' || uri.host == '127.0.0.1') {
+          // Allow manual override via env hostIp (optional) else 10.0.2.2 for emulator
+          final hostIp = dotenv.env['hostIp'] ?? '192.168.0.154';
+          raw = uri.replace(host: hostIp).toString();
+          debugPrint('REVIEWS DEBUG: Replaced localhost with: $hostIp => $raw');
+        }
+      }
+    } catch (_) {}
+    return raw;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        setState(() => _error = 'Not signed in');
+        return;
+      }
+
+      final base = _baseUrl;
+      debugPrint('[Analytics] Using base URL: $base');
+
+      // Fast health check to fail quickly if server is unreachable
+      final ok = await _ensureBackendUp(base);
+      if (!ok) {
+        setState(
+          () => _error =
+              'Backend unreachable at $base. Set BACKEND_URL in your .env to a reachable host.',
+        );
+        return;
+      }
+
+      await _fetchTransactions(user.id);
+    } catch (e) {
+      setState(() => _error = 'Failed to load analytics: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<bool> _ensureBackendUp(String base) async {
+    try {
+      final uri = Uri.parse('$base/sellers/health');
+      final r = await http.get(uri).timeout(const Duration(seconds: 3));
+      return r.statusCode == 200;
+    } on TimeoutException {
+      return false;
+    } on SocketException {
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _fetchTransactions(String sellerId) async {
+    try {
+      final uri = Uri.parse('$_baseUrl/sellers/$sellerId/transactions');
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null)
+        headers['Authorization'] = 'Bearer ${session.accessToken}';
+
+      final resp = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 8));
+
+      if (resp.statusCode == 200) {
+        final map = json.decode(resp.body) as Map<String, dynamic>;
+        final list = (map['transactions'] as List? ?? [])
+            .whereType<Map>()
+            .map((e) => e.map((k, v) => MapEntry(k.toString(), v)))
+            .toList();
+        setState(() => _transactions = List<Map<String, dynamic>>.from(list));
+      } else {
+        setState(() => _error = 'Transactions error: HTTP ${resp.statusCode}');
+      }
+    } on TimeoutException catch (_) {
+      setState(
+        () => _error =
+            'Request timed out. Check server at ${_baseUrl} and network.',
+      );
+    } on SocketException catch (e) {
+      setState(
+        () => _error =
+            'Network error: ${e.osError?.message ?? e.message}. Host ${_baseUrl}',
+      );
+    } catch (e) {
+      setState(() => _error = 'Failed to fetch transactions: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +147,6 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
     final isDesktop = screenWidth >= 1024;
     final isLargeScreen = screenWidth >= 1200;
 
-    // Responsive padding
     final horizontalPadding = isDesktop ? 40.0 : (isTablet ? 24.0 : 16.0);
     final verticalPadding = isDesktop ? 32.0 : (isTablet ? 24.0 : 16.0);
 
@@ -36,48 +165,73 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
         ),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              setState(() {
-                _selectedPeriod = value;
-              });
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: "Daily", child: Text("Daily")),
-              const PopupMenuItem(value: "Weekly", child: Text("Weekly")),
-              const PopupMenuItem(value: "Monthly", child: Text("Monthly")),
-            ],
-            child: Container(
-              margin: EdgeInsets.only(right: horizontalPadding / 2),
-              padding: EdgeInsets.symmetric(
-                horizontal: isTablet ? 16 : 12,
-                vertical: isTablet ? 8 : 6,
-              ),
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white.withOpacity(0.3)),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                _selectedPeriod,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: isTablet ? 16 : 14,
+          _buildPeriodMenu(isTablet)],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton(
+                      onPressed: _init,
+                      child: const Text('Retry'),
+                    ),
+                  ],
                 ),
               ),
+            )
+          : SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: verticalPadding,
+              ),
+              child: _buildResponsiveLayout(
+                context,
+                isTablet,
+                isDesktop,
+                isLargeScreen,
+              ),
             ),
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
+    );
+  }
+
+  Widget _buildPeriodMenu(bool isTablet) {
+    return PopupMenuButton<String>(
+      color: Colors.grey[900],
+      initialValue: _selectedPeriod,
+      onSelected: (value) => setState(() => _selectedPeriod = value),
+      itemBuilder: (context) => const [
+        PopupMenuItem(value: 'Daily', child: Text('Daily')),
+        PopupMenuItem(value: 'Weekly', child: Text('Weekly')),
+        PopupMenuItem(value: 'Monthly', child: Text('Monthly')),
+      ],
+      child: Container(
+        margin: const EdgeInsets.only(right: 12),
         padding: EdgeInsets.symmetric(
-          horizontal: horizontalPadding,
-          vertical: verticalPadding,
+          horizontal: isTablet ? 14 : 10,
+          vertical: 8,
         ),
-        child: _buildResponsiveLayout(
-          context,
-          isTablet,
-          isDesktop,
-          isLargeScreen,
+        decoration: BoxDecoration(
+          color: Colors.grey[850],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.grey[700]!),
+        ),
+        child: Row(
+          children: [
+            Text(_selectedPeriod, style: const TextStyle(color: Colors.white)),
+            const SizedBox(width: 6),
+            const Icon(Icons.keyboard_arrow_down, color: Colors.white),
+          ],
         ),
       ),
     );
@@ -102,16 +256,12 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Overview Cards - 2x2 grid for mobile
         _buildOverviewCards(2),
         const SizedBox(height: 24),
-        // Chart section
         _buildChartSection(200),
         const SizedBox(height: 20),
-        // Earnings Breakdown
         _buildEarningsBreakdownSection(),
         const SizedBox(height: 20),
-        // Top Products
         _buildTopProductsSection(),
       ],
     );
@@ -121,10 +271,8 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Overview Cards - 2x2 grid for tablet
         _buildOverviewCards(2),
         const SizedBox(height: 32),
-        // Chart and breakdown side by side
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -134,7 +282,6 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
           ],
         ),
         const SizedBox(height: 24),
-        // Top Products
         _buildTopProductsSection(),
       ],
     );
@@ -144,82 +291,78 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Overview Cards - 4 in a row for desktop
         _buildOverviewCards(4),
         const SizedBox(height: 40),
-        // Chart and sections in a row
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              flex: isLargeScreen ? 3 : 2,
-              child: _buildChartSection(isLargeScreen ? 300 : 280),
-            ),
+            Expanded(child: _buildChartSection(isLargeScreen ? 300 : 280)),
             const SizedBox(width: 24),
-            Expanded(
-              flex: 1,
-              child: Column(
-                children: [
-                  _buildEarningsBreakdownSection(),
-                  const SizedBox(height: 20),
-                  _buildTopProductsSection(),
-                ],
-              ),
-            ),
+            Expanded(child: _buildEarningsBreakdownSection()),
           ],
         ),
+        const SizedBox(height: 24),
+        _buildTopProductsSection(),
       ],
     );
   }
 
+  // Overview Cards
   Widget _buildOverviewCards(int cardsPerRow) {
+    final revenueStr = _getPeriodEarnings();
+    final earningsChange = _getEarningsChange();
+    final orders = _getOrderCount();
+    final orderChange = _getOrderChange();
+    final aov = _getAvgOrderValue();
+    final aovChange = _getAvgOrderChange();
+    final conv = _getConversionRate();
+    final convChange = _getConversionChange();
+
     final cards = [
       _buildAnalyticsOverviewCard(
-        "Total Revenue",
-        _getPeriodEarnings(),
-        _getEarningsChange(),
+        'Total Revenue',
+        revenueStr,
+        earningsChange,
         Icons.attach_money,
         const Color(0xff667eea),
-        true,
+        !earningsChange.startsWith('-'),
       ),
       _buildAnalyticsOverviewCard(
-        "Orders",
-        _getOrderCount(),
-        _getOrderChange(),
+        'Orders',
+        orders,
+        orderChange,
         Icons.shopping_bag,
         const Color(0xff764ba2),
-        true,
+        !orderChange.startsWith('-'),
       ),
       _buildAnalyticsOverviewCard(
-        "Avg Order Value",
-        _getAvgOrderValue(),
-        _getAvgOrderChange(),
+        'Avg Order Value',
+        aov,
+        aovChange,
         Icons.trending_up,
         const Color(0xff4facfe),
-        _selectedPeriod != "Daily",
+        !aovChange.startsWith('-'),
       ),
       _buildAnalyticsOverviewCard(
-        "Conversion Rate",
-        _getConversionRate(),
-        _getConversionChange(),
+        'Conversion Rate',
+        conv,
+        convChange,
         Icons.percent,
         const Color(0xff38A169),
-        true,
+        !convChange.startsWith('-'),
       ),
     ];
 
     if (cardsPerRow == 4) {
-      // Desktop: single row with 4 cards
       return Row(
         children:
             cards
                 .map((card) => Expanded(child: card))
-                .expand((widget) => [widget, const SizedBox(width: 16)])
+                .expand((w) => [w, const SizedBox(width: 16)])
                 .toList()
               ..removeLast(),
       );
     } else {
-      // Mobile/Tablet: 2x2 grid
       return Column(
         children: [
           Row(
@@ -243,6 +386,11 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
   }
 
   Widget _buildChartSection(double height) {
+    final series = _chartSeries();
+    final labels = series.labels;
+    final data = series.values;
+    final maxValue = data.isEmpty ? 0.0 : data.reduce((a, b) => a > b ? a : b);
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -254,67 +402,130 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                "Earnings Trend",
-                style: TextStyle(
+              Text(
+                'Sales · ${_getChartPeriodLabel()}',
+                style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xff667eea).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _getChartPeriodLabel(),
-                  style: const TextStyle(
-                    color: Color(0xff667eea),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              Row(children: _buildLegend()),
             ],
           ),
           const SizedBox(height: 20),
-          // Chart with earnings data
-          SizedBox(height: height, child: _buildEnhancedSalesChart()),
-          const SizedBox(height: 16),
-          // Chart Legend
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xff667eea), Color(0xff764ba2)],
+          SizedBox(
+            height: height,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Y-axis labels
+                SizedBox(
+                  width: 48,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        _formatCurrency(maxValue),
+                        style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                      ),
+                      Text(
+                        _formatCurrency(maxValue / 2),
+                        style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                      ),
+                      Text(
+                        '0',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                      ),
+                    ],
                   ),
-                  borderRadius: BorderRadius.circular(2),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                "Earnings (৳)",
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.6),
-                  fontSize: 10,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      // grid lines
+                      Positioned.fill(
+                        child: CustomPaint(painter: _GridPainter()),
+                      ),
+                      Positioned.fill(
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: CustomPaint(
+                            painter: _SalesChartPainter(
+                              data,
+                              maxValue == 0 ? 1 : maxValue,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.only(left: 60),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: labels
+                  .map(
+                    (e) => Expanded(
+                      child: Center(
+                        child: Text(
+                          e,
+                          style: TextStyle(
+                            color: Colors.grey[400],
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
           ),
         ],
       ),
     );
   }
 
+  List<Widget> _buildLegend() {
+    final breakdown = _earningsBreakdownForRange();
+    return breakdown.take(3).map((b) {
+      return Padding(
+        padding: const EdgeInsets.only(left: 10.0),
+        child: Row(
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: b['color'] as Color,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              b['method'] as String,
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
   Widget _buildEarningsBreakdownSection() {
+    final items = _earningsBreakdownForRange();
+    final total = items.fold<double>(
+      0.0,
+      (p, e) => p + (e['amount'] as double),
+    );
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -326,21 +537,27 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            "Earnings Breakdown",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            'Earnings Breakdown',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 16),
-          ..._getEarningsBreakdown().map((item) => _buildBreakdownItem(item)),
+          ...items.map(
+            (e) => _buildBreakdownItem({
+              'color': e['color'],
+              'label': e['method'],
+              'amount': e['amount'],
+              'percent': total > 0
+                  ? ((e['amount'] as double) * 100.0 / total)
+                  : 0.0,
+            }),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildTopProductsSection() {
+    final products = _topProductsForRange();
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -352,383 +569,18 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            "Top Earning Products",
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            'Top Products',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 16),
-          ..._getTopProducts().map((product) => _buildTopProductItem(product)),
+          ...products.take(4).map(_buildTopProductItem),
           const SizedBox(height: 60),
         ],
       ),
     );
   }
 
-  // Helper method for getting period earnings
-  String _getPeriodEarnings() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "৳25,300";
-      case "Weekly":
-        return "৳1,47,200";
-      case "Monthly":
-        return "৳5,59,200";
-      default:
-        return "৳5,59,200";
-    }
-  }
-
-  String _getEarningsChange() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "+৳2,400";
-      case "Weekly":
-        return "+৳18,200";
-      case "Monthly":
-        return "+৳65,800";
-      default:
-        return "+৳65,800";
-    }
-  }
-
-  // Helper methods for additional analytics data
-  String _getOrderCount() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "142";
-      case "Weekly":
-        return "827";
-      case "Monthly":
-        return "3,245";
-      default:
-        return "3,245";
-    }
-  }
-
-  String _getOrderChange() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "+12";
-      case "Weekly":
-        return "+87";
-      case "Monthly":
-        return "+245";
-      default:
-        return "+245";
-    }
-  }
-
-  String _getAvgOrderValue() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "৳178";
-      case "Weekly":
-        return "৳198";
-      case "Monthly":
-        return "৳225";
-      default:
-        return "৳225";
-    }
-  }
-
-  String _getAvgOrderChange() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "-৳15";
-      case "Weekly":
-        return "+৳12";
-      case "Monthly":
-        return "+৳28";
-      default:
-        return "+৳28";
-    }
-  }
-
-  String _getConversionRate() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "3.2%";
-      case "Weekly":
-        return "3.8%";
-      case "Monthly":
-        return "4.1%";
-      default:
-        return "4.1%";
-    }
-  }
-
-  String _getConversionChange() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "+0.2%";
-      case "Weekly":
-        return "+0.5%";
-      case "Monthly":
-        return "+0.8%";
-      default:
-        return "+0.8%";
-    }
-  }
-
-  // Enhanced Sales Chart Widget
-  Widget _buildEnhancedSalesChart() {
-    final data = _getSalesEarningsData();
-    final labels = _getChartLabels();
-    final maxValue = data.reduce((a, b) => a > b ? a : b);
-
-    return Column(
-      children: [
-        // Y-axis labels and chart
-        Expanded(
-          child: Row(
-            children: [
-              // Y-axis labels
-              SizedBox(
-                width: 50,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      "৳${(maxValue.toInt())}",
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 10,
-                      ),
-                    ),
-                    Text(
-                      "৳${(maxValue * 0.75).toInt()}",
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 10,
-                      ),
-                    ),
-                    Text(
-                      "৳${(maxValue * 0.5).toInt()}",
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 10,
-                      ),
-                    ),
-                    Text(
-                      "৳${(maxValue * 0.25).toInt()}",
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 10,
-                      ),
-                    ),
-                    Text(
-                      "৳0",
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              // Chart area
-              Expanded(
-                child: CustomPaint(
-                  painter: _SalesChartPainter(data, maxValue),
-                  child: Container(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        // X-axis labels
-        Padding(
-          padding: const EdgeInsets.only(left: 60),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: labels
-                .map(
-                  (label) => Text(
-                    label,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
-                      fontSize: 10,
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // Helper methods for chart data
-  List<double> _getSalesEarningsData() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return [1200.0, 1800.0, 1500.0, 2200.0, 1900.0, 2800.0, 2500.0];
-      case "Weekly":
-        return [8500.0, 12000.0, 9800.0, 15200.0, 13400.0, 18500.0, 16200.0];
-      case "Monthly":
-        return [35000.0, 42000.0, 38000.0, 51000.0, 47000.0, 58000.0];
-      default:
-        return [35000.0, 42000.0, 38000.0, 51000.0, 47000.0, 58000.0];
-    }
-  }
-
-  List<String> _getChartLabels() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-      case "Weekly":
-        return ["W1", "W2", "W3", "W4", "W5", "W6", "W7"];
-      case "Monthly":
-        return ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
-      default:
-        return ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
-    }
-  }
-
-  String _getChartPeriodLabel() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "Last 7 Days";
-      case "Weekly":
-        return "Last 7 Weeks";
-      case "Monthly":
-        return "Last 6 Months";
-      default:
-        return "Last 6 Months";
-    }
-  }
-
-  // Earnings Breakdown Data
-  List<Map<String, dynamic>> _getEarningsBreakdown() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return [
-          {
-            'label': 'Product Sales',
-            'amount': '৳22,500',
-            'percentage': '89%',
-            'color': const Color(0xff667eea),
-          },
-          {
-            'label': 'Shipping Fees',
-            'amount': '৳1,800',
-            'percentage': '7%',
-            'color': const Color(0xff764ba2),
-          },
-          {
-            'label': 'Service Charges',
-            'amount': '৳1,000',
-            'percentage': '4%',
-            'color': const Color(0xff4facfe),
-          },
-        ];
-      case "Weekly":
-        return [
-          {
-            'label': 'Product Sales',
-            'amount': '৳1,31,200',
-            'percentage': '89%',
-            'color': const Color(0xff667eea),
-          },
-          {
-            'label': 'Shipping Fees',
-            'amount': '৳10,800',
-            'percentage': '7%',
-            'color': const Color(0xff764ba2),
-          },
-          {
-            'label': 'Service Charges',
-            'amount': '৳5,200',
-            'percentage': '4%',
-            'color': const Color(0xff4facfe),
-          },
-        ];
-      case "Monthly":
-        return [
-          {
-            'label': 'Product Sales',
-            'amount': '৳4,96,000',
-            'percentage': '89%',
-            'color': const Color(0xff667eea),
-          },
-          {
-            'label': 'Shipping Fees',
-            'amount': '৳41,200',
-            'percentage': '7%',
-            'color': const Color(0xff764ba2),
-          },
-          {
-            'label': 'Service Charges',
-            'amount': '৳22,000',
-            'percentage': '4%',
-            'color': const Color(0xff4facfe),
-          },
-        ];
-      default:
-        return [
-          {
-            'label': 'Product Sales',
-            'amount': '৳4,96,000',
-            'percentage': '89%',
-            'color': const Color(0xff667eea),
-          },
-          {
-            'label': 'Shipping Fees',
-            'amount': '৳41,200',
-            'percentage': '7%',
-            'color': const Color(0xff764ba2),
-          },
-          {
-            'label': 'Service Charges',
-            'amount': '৳22,000',
-            'percentage': '4%',
-            'color': const Color(0xff4facfe),
-          },
-        ];
-    }
-  }
-
-  // Top Products Data
-  List<Map<String, dynamic>> _getTopProducts() {
-    return [
-      {
-        'name': 'Wireless Headphones',
-        'sold': '245',
-        'revenue': '৳49,000',
-        'icon': Icons.headphones,
-        'color': const Color(0xff667eea),
-      },
-      {
-        'name': 'Smartphone Case',
-        'sold': '189',
-        'revenue': '৳28,350',
-        'icon': Icons.phone_android,
-        'color': const Color(0xff764ba2),
-      },
-      {
-        'name': 'Bluetooth Speaker',
-        'sold': '156',
-        'revenue': '৳31,200',
-        'icon': Icons.speaker,
-        'color': const Color(0xff4facfe),
-      },
-      {
-        'name': 'Smart Watch',
-        'sold': '78',
-        'revenue': '৳39,000',
-        'icon': Icons.watch,
-        'color': const Color(0xff38A169),
-      },
-    ];
-  }
-
-  // Analytics Overview Card Widget
+  // Overview Card
   Widget _buildAnalyticsOverviewCard(
     String title,
     String value,
@@ -749,11 +601,11 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: color.withOpacity(0.3),
+            offset: Offset(0, 4),
             blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black54,
           ),
         ],
       ),
@@ -762,46 +614,43 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
         children: [
           Row(
             children: [
-              Icon(icon, color: Colors.white, size: isTablet ? 24 : 20),
+              Icon(icon, color: Colors.white),
               const Spacer(),
               Container(
-                padding: const EdgeInsets.all(4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isPositive ? Colors.green : Colors.red,
-                  borderRadius: BorderRadius.circular(8),
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
                 ),
-                child: Icon(
-                  isPositive ? Icons.trending_up : Icons.trending_down,
-                  color: Colors.white,
-                  size: isTablet ? 14 : 12,
+                child: Row(
+                  children: [
+                    Icon(
+                      isPositive ? Icons.arrow_upward : Icons.arrow_downward,
+                      size: 14,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      change,
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ],
                 ),
-              ),
+              )
             ],
           ),
           SizedBox(height: isTablet ? 16 : 12),
           Text(
+            title,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+          const SizedBox(height: 4),
+          Text(
             value,
             style: TextStyle(
               color: Colors.white,
-              fontSize: isTablet ? 24 : 20,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.9),
-              fontSize: isTablet ? 14 : 12,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            change,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
-              fontSize: isTablet ? 12 : 10,
-              fontWeight: FontWeight.w600,
+              fontSize: isTablet ? 22 : 20,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -809,60 +658,60 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
     );
   }
 
-  // Breakdown Item Widget
+  // Breakdown item
   Widget _buildBreakdownItem(Map<String, dynamic> item) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth >= 768;
+    final color = item['color'] as Color;
+    final amount = (item['amount'] as double?) ?? 0.0;
+    final percent = (item['percent'] as double?) ?? 0.0;
 
     return Container(
       margin: EdgeInsets.only(bottom: isTablet ? 20 : 16),
       child: Row(
         children: [
           Container(
-            width: isTablet ? 16 : 12,
-            height: isTablet ? 16 : 12,
-            decoration: BoxDecoration(
-              color: item['color'],
-              borderRadius: BorderRadius.circular(2),
-            ),
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           SizedBox(width: isTablet ? 16 : 12),
           Expanded(
-            child: Text(
-              item['label'],
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: isTablet ? 16 : 14,
-                fontWeight: FontWeight.w500,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Stack(
+                children: [
+                  Container(height: 8, color: Colors.grey[800]),
+                  FractionallySizedBox(
+                    widthFactor: (percent.clamp(0.0, 100.0)) / 100.0,
+                    child: Container(height: 8, color: color.withOpacity(0.8)),
+                  ),
+                ],
               ),
-            ),
-          ),
-          Text(
-            item['percentage'],
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.7),
-              fontSize: isTablet ? 14 : 12,
             ),
           ),
           SizedBox(width: isTablet ? 16 : 12),
           Text(
-            item['amount'],
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: isTablet ? 16 : 14,
-              fontWeight: FontWeight.bold,
-            ),
+            _formatCurrency(amount),
+            style: const TextStyle(color: Colors.white70),
+          ),
+          SizedBox(width: isTablet ? 12 : 8),
+          Text(
+            '${percent.toStringAsFixed(0)}%',
+            style: const TextStyle(color: Colors.white54, fontSize: 12),
           ),
         ],
       ),
     );
   }
 
-  // Top Products Item Widget
+  // Top product item
   Widget _buildTopProductItem(Map<String, dynamic> product) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth >= 768;
-
+    final name = (product['name'] ?? 'Product') as String;
+    final sold = (product['sold'] ?? 0).toString();
+    final revenue = (product['revenue'] ?? 0.0) as double;
     return Container(
       margin: EdgeInsets.only(bottom: isTablet ? 16 : 12),
       padding: EdgeInsets.all(isTablet ? 16 : 12),
@@ -873,17 +722,13 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
       child: Row(
         children: [
           Container(
-            width: isTablet ? 48 : 40,
-            height: isTablet ? 48 : 40,
-            decoration: BoxDecoration(
-              color: product['color'],
-              borderRadius: BorderRadius.circular(8),
+            width: 40,
+            height: 40,
+            decoration: const BoxDecoration(
+              color: Color(0xff667eea),
+              shape: BoxShape.circle,
             ),
-            child: Icon(
-              product['icon'],
-              color: Colors.white,
-              size: isTablet ? 24 : 20,
-            ),
+            child: const Icon(Icons.shopping_bag_rounded, color: Colors.white),
           ),
           SizedBox(width: isTablet ? 16 : 12),
           Expanded(
@@ -891,39 +736,383 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  product['name'],
-                  style: TextStyle(
+                  name,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
-                    fontSize: isTablet ? 16 : 14,
                   ),
                 ),
+                const SizedBox(height: 2),
                 Text(
-                  "${product['sold']} sold",
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
-                    fontSize: isTablet ? 14 : 12,
-                  ),
+                  '$sold sold',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
               ],
             ),
           ),
           Text(
-            product['revenue'],
-            style: TextStyle(
-              color: const Color(0xff38A169),
-              fontWeight: FontWeight.bold,
-              fontSize: isTablet ? 16 : 14,
-            ),
+            _formatCurrency(revenue),
+            style: const TextStyle(color: Colors.white),
           ),
-          const SizedBox(height: 70),
         ],
       ),
     );
   }
+
+  // Data computations
+  ({DateTime start, DateTime end}) _currentRange() {
+    final now = DateTime.now();
+    switch (_selectedPeriod) {
+      case 'Daily':
+        final start = DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).subtract(const Duration(days: 6));
+        final end = DateTime(now.year, now.month, now.day, 23, 59, 59);
+        return (start: start, end: end);
+      case 'Weekly':
+        final end = DateTime(now.year, now.month, now.day, 23, 59, 59);
+        final start = end.subtract(const Duration(days: 7 * 7 - 1));
+        return (start: start, end: end);
+      case 'Monthly':
+      default:
+        final end = DateTime(now.year, now.month, now.day, 23, 59, 59);
+        final start = DateTime(
+          now.year,
+          now.month,
+          1,
+        ).subtract(const Duration(days: 30 * 5));
+        return (start: start, end: end);
+    }
+  }
+
+  ({DateTime start, DateTime end}) _previousRange() {
+    final cur = _currentRange();
+    final delta = cur.end.difference(cur.start).inDays + 1;
+    final start = cur.start.subtract(Duration(days: delta));
+    final end = cur.end.subtract(Duration(days: delta));
+    return (start: start, end: end);
+  }
+
+  bool _inRange(DateTime dt, DateTime start, DateTime end) =>
+      !dt.isBefore(start) && !dt.isAfter(end);
+
+  bool _isSuccess(String? status) {
+    if (status == null) return false;
+    final s = status.toLowerCase();
+    return s == 'completed' || s == 'paid' || s == 'succeeded';
+  }
+
+  DateTime? _txDate(Map<String, dynamic> tx) {
+    final s = (tx['paid_at'] ?? tx['created_at'])?.toString();
+    if (s == null || s.isEmpty) return null;
+    try {
+      return DateTime.parse(s).toLocal();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  double _amountForTx(Map<String, dynamic> tx) {
+    final raw = tx['seller_item_total'] ?? tx['amount'];
+    if (raw == null) return 0.0;
+    try {
+      return double.parse(raw.toString());
+    } catch (_) {
+      return 0.0;
+    }
+  }
+
+  // Metrics
+  String _formatCurrency(num v) => '৳${NumberFormat.compact().format(v)}';
+
+  String _getPeriodEarnings() {
+    final r = _currentRange();
+    final sum = _sumForRange(r.start, r.end);
+    return _formatCurrency(sum);
+  }
+
+  String _getEarningsChange() {
+    final cur = _currentRange();
+    final prev = _previousRange();
+    final curSum = _sumForRange(cur.start, cur.end);
+    final prevSum = _sumForRange(prev.start, prev.end);
+    final delta = curSum - prevSum;
+    final sign = delta >= 0 ? '+' : '-';
+    return '$sign ${_formatCurrency(delta.abs())}';
+  }
+
+  String _getOrderCount() {
+    final r = _currentRange();
+    final txs = _transactions.where((t) {
+      final dt = _txDate(t);
+      return dt != null &&
+          _inRange(dt, r.start, r.end) &&
+          _isSuccess(t['payment_status']?.toString());
+    }).toList();
+    return txs.length.toString();
+  }
+
+  String _getOrderChange() {
+    final cur = _currentRange();
+    final prev = _previousRange();
+    int cnt(DateTime s, DateTime e) => _transactions.where((t) {
+      final dt = _txDate(t);
+      return dt != null &&
+          _inRange(dt, s, e) &&
+          _isSuccess(t['payment_status']?.toString());
+    }).length;
+    final d = cnt(cur.start, cur.end) - cnt(prev.start, prev.end);
+    final sign = d >= 0 ? '+' : '-';
+    return '$sign ${d.abs()}';
+  }
+
+  String _getAvgOrderValue() {
+    final r = _currentRange();
+    double sum = 0.0;
+    int count = 0;
+    for (final t in _transactions) {
+      final dt = _txDate(t);
+      if (dt == null || !_inRange(dt, r.start, r.end)) continue;
+      if (!_isSuccess(t['payment_status']?.toString())) continue;
+      sum += _amountForTx(t);
+      count++;
+    }
+    final aov = count == 0 ? 0.0 : sum / count;
+    return _formatCurrency(aov);
+  }
+
+  String _getAvgOrderChange() {
+    final cur = _currentRange();
+    final prev = _previousRange();
+    double avg(DateTime s, DateTime e) {
+      double sum = 0.0;
+      int count = 0;
+      for (final t in _transactions) {
+        final dt = _txDate(t);
+        if (dt == null || !_inRange(dt, s, e)) continue;
+        if (!_isSuccess(t['payment_status']?.toString())) continue;
+        sum += _amountForTx(t);
+        count++;
+      }
+      return count == 0 ? 0.0 : sum / count;
+    }
+
+    final d = avg(cur.start, cur.end) - avg(prev.start, prev.end);
+    final sign = d >= 0 ? '+' : '-';
+    return '$sign ${_formatCurrency(d.abs())}';
+  }
+
+  String _getConversionRate() {
+    final r = _currentRange();
+    final inRange = _transactions.where((t) {
+      final dt = _txDate(t);
+      return dt != null && _inRange(dt, r.start, r.end);
+    }).toList();
+    if (inRange.isEmpty) return '0.0%';
+    final total = inRange.length;
+    final success = inRange
+        .where((t) => _isSuccess(t['payment_status']?.toString()))
+        .length;
+    final pct = success * 100.0 / total;
+    return '${pct.toStringAsFixed(1)}%';
+  }
+
+  String _getConversionChange() {
+    final cur = _currentRange();
+    final prev = _previousRange();
+    double rate(DateTime s, DateTime e) {
+      final inRange = _transactions.where((t) {
+        final dt = _txDate(t);
+        return dt != null && _inRange(dt, s, e);
+      }).toList();
+      if (inRange.isEmpty) return 0.0;
+      final total = inRange.length;
+      final success = inRange
+          .where((t) => _isSuccess(t['payment_status']?.toString()))
+          .length;
+      return success * 100.0 / total;
+    }
+
+    final d = rate(cur.start, cur.end) - rate(prev.start, prev.end);
+    final sign = d >= 0 ? '+' : '-';
+    return '$sign ${d.abs().toStringAsFixed(1)}%';
+  }
+
+  double _sumForRange(DateTime start, DateTime end) {
+    double total = 0.0;
+    for (final t in _transactions) {
+      final dt = _txDate(t);
+      if (dt == null || !_inRange(dt, start, end)) continue;
+      if (!_isSuccess(t['payment_status']?.toString())) continue;
+      total += _amountForTx(t);
+    }
+    return total;
+  }
+
+  // Chart series
+  ({List<String> labels, List<double> values}) _chartSeries() {
+    final now = DateTime.now();
+    if (_selectedPeriod == 'Daily') {
+      // last 7 days
+      final days = List.generate(
+        7,
+        (i) => DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).subtract(Duration(days: 6 - i)),
+      );
+      final labels = days.map((d) => DateFormat('E').format(d)).toList();
+      final values = days.map((d) {
+        final start = DateTime(d.year, d.month, d.day);
+        final end = DateTime(d.year, d.month, d.day, 23, 59, 59);
+        return _sumForRange(start, end);
+      }).toList();
+      return (labels: labels, values: values);
+    } else if (_selectedPeriod == 'Weekly') {
+      // last 7 weeks, rolling windows
+      final List<String> labels = [];
+      final List<double> values = [];
+      DateTime end = DateTime(now.year, now.month, now.day, 23, 59, 59);
+      for (int i = 6; i >= 0; i--) {
+        final start = end.subtract(const Duration(days: 6));
+        labels.add('W${7 - i}');
+        values.add(_sumForRange(start, end));
+        end = start.subtract(const Duration(days: 1));
+      }
+      return (labels: labels, values: values);
+    } else {
+      // Monthly: last 6 months
+      final months = List<DateTime>.generate(6, (i) {
+        final d = DateTime(now.year, now.month - (5 - i), 1);
+        return DateTime(d.year, d.month, 1);
+      });
+      final labels = months.map((d) => DateFormat('MMM').format(d)).toList();
+      final values = months.map((m) {
+        final start = DateTime(m.year, m.month, 1);
+        final end = DateTime(
+          m.year,
+          m.month + 1,
+          1,
+        ).subtract(const Duration(seconds: 1));
+        return _sumForRange(start, end);
+      }).toList();
+      return (labels: labels, values: values);
+    }
+  }
+
+  String _getChartPeriodLabel() {
+    switch (_selectedPeriod) {
+      case 'Daily':
+        return 'Last 7 Days';
+      case 'Weekly':
+        return 'Last 7 Weeks';
+      case 'Monthly':
+      default:
+        return 'Last 6 Months';
+    }
+  }
+
+  // Earnings breakdown by payment method in current range
+  List<Map<String, dynamic>> _earningsBreakdownForRange() {
+    final r = _currentRange();
+    final map = <String, double>{};
+    for (final t in _transactions) {
+      final dt = _txDate(t);
+      if (dt == null || !_inRange(dt, r.start, r.end)) continue;
+      if (!_isSuccess(t['payment_status']?.toString())) continue;
+      final method = (t['payment_method'] ?? 'Other').toString();
+      map[method] = (map[method] ?? 0.0) + _amountForTx(t);
+    }
+    final colors = [
+      const Color(0xff667eea),
+      const Color(0xff764ba2),
+      const Color(0xff4facfe),
+      const Color(0xff38A169),
+      Colors.orange,
+      Colors.teal,
+    ];
+    final entries = map.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final out = <Map<String, dynamic>>[];
+    for (int i = 0; i < entries.length; i++) {
+      out.add({
+        'method': entries[i].key,
+        'amount': entries[i].value,
+        'color': colors[i % colors.length],
+      });
+    }
+    return out;
+  }
+
+  // Top products aggregation from seller_items
+  List<Map<String, dynamic>> _topProductsForRange() {
+    final r = _currentRange();
+    final Map<String, Map<String, dynamic>> agg = {};
+    for (final t in _transactions) {
+      final dt = _txDate(t);
+      if (dt == null || !_inRange(dt, r.start, r.end)) continue;
+      if (!_isSuccess(t['payment_status']?.toString())) continue;
+      final items = (t['seller_items'] as List?) ?? [];
+      for (final it in items.whereType<Map>()) {
+        final id = it['id']?.toString() ?? it['product_id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        final name = (it['name'] ?? 'Product').toString();
+        final qty =
+            (it['quantity'] as num?)?.toInt() ??
+            int.tryParse(it['quantity']?.toString() ?? '') ??
+            0;
+        final itemTotal =
+            double.tryParse(it['item_total']?.toString() ?? '') ??
+            ((double.tryParse(it['unit_price']?.toString() ?? '') ?? 0.0) *
+                qty);
+        final cur = agg[id];
+        if (cur == null) {
+          agg[id] = {'name': name, 'sold': qty, 'revenue': itemTotal};
+        } else {
+          cur['sold'] = (cur['sold'] as int) + qty;
+          cur['revenue'] = (cur['revenue'] as double) + itemTotal;
+        }
+      }
+    }
+    final list = agg.values
+        .map(
+          (e) => {
+            'name': e['name'],
+            'sold': e['sold'],
+            'revenue': (e['revenue'] as double),
+          },
+        )
+        .toList();
+    list.sort(
+      (a, b) => (b['revenue'] as double).compareTo(a['revenue'] as double),
+    );
+    return list;
+  }
 }
 
-// Custom painter for the sales chart
+// Grid background for chart
+class _GridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0x22FFFFFF)
+      ..strokeWidth = 1;
+    final rows = 3;
+    final rowH = size.height / rows;
+    for (int i = 1; i < rows; i++) {
+      final y = i * rowH;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// Custom painter for the sales chart (smooth line + area fill)
 class _SalesChartPainter extends CustomPainter {
   final List<double> data;
   final double maxValue;
@@ -932,66 +1121,56 @@ class _SalesChartPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    if (data.isEmpty) return;
+
+    final linePaint = Paint()
       ..color = const Color(0xff667eea)
       ..strokeWidth = 3
-      ..style = PaintingStyle.stroke;
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
 
     final fillPaint = Paint()
-      ..shader = LinearGradient(
+      ..shader = const LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [
-          const Color(0xff667eea).withOpacity(0.3),
-          const Color(0xff667eea).withOpacity(0.1),
-        ],
+        colors: [Color(0x55667eea), Color(0x11667eea)],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
       ..style = PaintingStyle.fill;
 
     final path = Path();
     final fillPath = Path();
 
-    if (data.isNotEmpty) {
-      final stepWidth = size.width / (data.length - 1);
+    final len = data.length;
+    final stepX = len == 1 ? size.width : size.width / (len - 1);
 
-      // Start the path
-      final startX = 0.0;
-      final startY = size.height - (data[0] / maxValue) * size.height;
-      path.moveTo(startX, startY);
-      fillPath.moveTo(startX, size.height);
-      fillPath.lineTo(startX, startY);
+    double yAt(int i) =>
+        size.height -
+        ((data[i] / (maxValue <= 0 ? 1 : maxValue)) * size.height);
 
-      // Draw the line
-      for (int i = 1; i < data.length; i++) {
-        final x = i * stepWidth;
-        final y = size.height - (data[i] / maxValue) * size.height;
-        path.lineTo(x, y);
-        fillPath.lineTo(x, y);
-      }
+    path.moveTo(0, yAt(0));
+    fillPath.moveTo(0, size.height);
+    fillPath.lineTo(0, yAt(0));
 
-      // Complete the fill path
-      fillPath.lineTo(size.width, size.height);
-      fillPath.close();
+    for (int i = 1; i < len; i++) {
+      final x = i * stepX;
+      final y = yAt(i);
+      path.lineTo(x, y);
+      fillPath.lineTo(x, y);
+    }
 
-      // Draw the filled area
-      canvas.drawPath(fillPath, fillPaint);
+    fillPath.lineTo(size.width, size.height);
+    fillPath.close();
 
-      // Draw the line
-      canvas.drawPath(path, paint);
+    canvas.drawPath(fillPath, fillPaint);
+    canvas.drawPath(path, linePaint);
 
-      // Draw points
-      final pointPaint = Paint()
-        ..color = const Color(0xff667eea)
-        ..style = PaintingStyle.fill;
-
-      for (int i = 0; i < data.length; i++) {
-        final x = i * stepWidth;
-        final y = size.height - (data[i] / maxValue) * size.height;
-        canvas.drawCircle(Offset(x, y), 4, pointPaint);
-
-        // Draw white center
-        canvas.drawCircle(Offset(x, y), 2, Paint()..color = Colors.white);
-      }
+    final pointPaint = Paint()..color = const Color(0xff667eea);
+    final centerPaint = Paint()..color = Colors.white;
+    for (int i = 0; i < len; i++) {
+      final x = i * stepX;
+      final y = yAt(i);
+      canvas.drawCircle(Offset(x, y), 4, pointPaint);
+      canvas.drawCircle(Offset(x, y), 2, centerPaint);
     }
   }
 

@@ -3,13 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:file_picker/file_picker.dart';
 // Pages are pushed via named routes inside SellerShell's nested Navigator.
 import 'package:virtual_shop/pages/my_products_sheet.dart';
 
@@ -34,6 +34,8 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
 
   // Recent reviews state
   List<Map<String, dynamic>> _recentReviews = [];
+  // Keep all reviews for analytics
+  List<Map<String, dynamic>> _allReviews = [];
   bool _rvLoading = false;
   String? _rvError;
   double _avgRating = 0.0;
@@ -186,6 +188,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
           r['verified'] ??= true;
         }
         setState(() {
+          _allReviews = reviews;
           _recentReviews = reviews.take(2).toList();
           _avgRating = (data['average_rating'] is num)
               ? (data['average_rating'] as num).toDouble()
@@ -1377,82 +1380,181 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
   }
 
   // Helper methods for analytics data
+  // Percent format helper
+  String _formatPercent(num value) => '${value.toStringAsFixed(1)}%';
+
+  bool _isInRange(DateTime dt, DateTime start, DateTime end) =>
+      !dt.isBefore(start) && !dt.isAfter(end);
+
+  List<Map<String, dynamic>> _transactionsInRange(
+    DateTime start,
+    DateTime end,
+  ) {
+    return _allTransactions.whereType<Map<String, dynamic>>().where((t) {
+      final dt = _txDate(t);
+      return dt != null && _isInRange(dt, start, end);
+    }).toList();
+  }
+
+  // Success metrics
   String _getSuccessRate() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "94.2%";
-      case "Weekly":
-        return "96.1%";
-      case "Monthly":
-        return "97.7%";
-      default:
-        return "97.7%";
-    }
+    final r = _currentRange();
+    final txs = _transactionsInRange(r.start, r.end);
+    if (txs.isEmpty) return '0.0%';
+    final total = txs.length;
+    final success = txs
+        .where((t) => _isSuccess(t['payment_status']?.toString()))
+        .length;
+    final pct = (success / total) * 100.0;
+    return _formatPercent(pct);
   }
 
   String _getTransactionCount() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "850";
-      case "Weekly":
-        return "5,420";
-      case "Monthly":
-        return "20,237";
-      default:
-        return "20,237";
+    final r = _currentRange();
+    final txs = _transactionsInRange(r.start, r.end);
+    final success = txs
+        .where((t) => _isSuccess(t['payment_status']?.toString()))
+        .length;
+    return success.toString();
+  }
+
+  // Response time metrics (from order created_at to payment paid_at for successful payments)
+  DateTime? _orderCreatedAt(Map<String, dynamic> tx) {
+    final created = tx['order_info']?['created_at']?.toString();
+    if (created == null || created.isEmpty) return null;
+    try {
+      return DateTime.parse(created).toLocal();
+    } catch (_) {
+      return null;
     }
+  }
+
+  DateTime? _paidAt(Map<String, dynamic> tx) {
+    final paid = tx['paid_at']?.toString();
+    if (paid == null || paid.isEmpty) return null;
+    try {
+      return DateTime.parse(paid).toLocal();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Duration? _averageResponseTime(List<Map<String, dynamic>> txs) {
+    int count = 0;
+    int totalMs = 0;
+    for (final t in txs) {
+      if (!_isSuccess(t['payment_status']?.toString())) continue;
+      final c = _orderCreatedAt(t);
+      final p = _paidAt(t);
+      if (c == null || p == null) continue;
+      final diff = p.difference(c);
+      if (diff.isNegative) continue;
+      totalMs += diff.inMilliseconds;
+      count++;
+    }
+    if (count == 0) return null;
+    return Duration(milliseconds: (totalMs / count).round());
+  }
+
+  Duration _responseThreshold() {
+    switch (_selectedPeriod) {
+      case 'Daily':
+        return const Duration(hours: 2);
+      case 'Weekly':
+        return const Duration(hours: 24);
+      case 'Monthly':
+      default:
+        return const Duration(hours: 48);
+    }
+  }
+
+  String _formatDurationShort(Duration d) {
+    if (d.inMinutes < 60) return '${d.inMinutes} min';
+    final hours = d.inMinutes / 60.0;
+    return '${hours.toStringAsFixed(1)} h';
   }
 
   String _getResponseRate() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "85%";
-      case "Weekly":
-        return "88%";
-      case "Monthly":
-        return "90%";
-      default:
-        return "90%";
+    final r = _currentRange();
+    final txs = _transactionsInRange(
+      r.start,
+      r.end,
+    ).where(_isSuccessTx).toList();
+    if (txs.isEmpty) return '0.0%';
+    final th = _responseThreshold();
+    int withDuration = 0;
+    int within = 0;
+    for (final t in txs) {
+      final c = _orderCreatedAt(t);
+      final p = _paidAt(t);
+      if (c == null || p == null) continue;
+      withDuration++;
+      final diff = p.difference(c);
+      if (!diff.isNegative && diff <= th) within++;
     }
+    if (withDuration == 0) return '0.0%';
+    return _formatPercent(within * 100.0 / withDuration);
   }
 
+  bool _isSuccessTx(Map<String, dynamic> t) =>
+      _isSuccess(t['payment_status']?.toString());
+
   String _getResponseTime() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "45 min";
-      case "Weekly":
-        return "1.2 hours";
-      case "Monthly":
-        return "2 hours";
-      default:
-        return "2 hours";
-    }
+    final r = _currentRange();
+    final txs = _transactionsInRange(r.start, r.end);
+    final avg = _averageResponseTime(txs);
+    if (avg == null) return '—';
+    return _formatDurationShort(avg);
+  }
+
+  // Feedback metrics (happy = rating >= 4)
+  int _ratingOf(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is double) return raw.round();
+    return int.tryParse(raw?.toString() ?? '0') ?? 0;
+  }
+
+  List<Map<String, dynamic>> _reviewsInRange(DateTime start, DateTime end) {
+    return _allReviews.where((r) {
+      final s = r['date']?.toString();
+      if (s == null || s.isEmpty) return false;
+      try {
+        final dt = DateTime.parse(s).toLocal();
+        return _isInRange(dt, start, end);
+      } catch (_) {
+        return false;
+      }
+    }).toList();
   }
 
   String _getFeedbackRate() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "82.1%";
-      case "Weekly":
-        return "76.5%";
-      case "Monthly":
-        return "78.9%";
-      default:
-        return "78.9%";
+    final r = _currentRange();
+    final revs = _reviewsInRange(r.start, r.end);
+    if (revs.isEmpty) {
+      if (_totalReviews == 0) return '0.0%';
+      // Fallback: overall happy rate from all reviews
+      final happyAll = _allReviews
+          .where((e) => _ratingOf(e['rating']) >= 4)
+          .length;
+      return _formatPercent(
+        _totalReviews == 0 ? 0 : (happyAll * 100.0 / _totalReviews),
+      );
     }
+    final happy = revs.where((e) => _ratingOf(e['rating']) >= 4).length;
+    return _formatPercent(happy * 100.0 / revs.length);
   }
 
   String _getFeedbackCount() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "89";
-      case "Weekly":
-        return "412";
-      case "Monthly":
-        return "1,730";
-      default:
-        return "1,730";
+    final r = _currentRange();
+    final revs = _reviewsInRange(r.start, r.end);
+    if (revs.isEmpty) {
+      final happyAll = _allReviews
+          .where((e) => _ratingOf(e['rating']) >= 4)
+          .length;
+      return happyAll.toString();
     }
+    final happy = revs.where((e) => _ratingOf(e['rating']) >= 4).length;
+    return happy.toString();
   }
 
   String _formatCurrency(num v) => '৳${v.toStringAsFixed(0)}';
