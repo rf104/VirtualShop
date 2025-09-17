@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:oc_liquid_glass/oc_liquid_glass.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,6 +10,9 @@ import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/pages/chat_page.dart';
 import 'package:virtual_shop/pages/edit_product.dart';
 import 'package:virtual_shop/pages/virtual_try_on_page.dart';
+import 'package:virtual_shop/pages/product_ar_viewer_page.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:virtual_shop/utils/cart_api.dart';
 import 'package:virtual_shop/utils/related_products_service.dart';
 import 'package:virtual_shop/utils/review_service.dart';
@@ -40,6 +44,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   double _avgRating = 0;
   int _reviewCount = 0;
   int _selectedStars = 0;
+  String? _modelLink;
+  bool _loadingModel = false;
 
   Future<void> _loadRelated() async {
     if ((widget.product.id).isEmpty) return;
@@ -267,6 +273,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     }
     _loadRelated();
     _loadReviews();
+    _load3DModel();
   }
 
   @override
@@ -462,7 +469,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => const ChatPage(),
+                              builder: (context) =>
+                                  ChatPage(product: widget.product),
                             ),
                           );
                         },
@@ -774,6 +782,50 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   Widget _buildActionButtons() {
     return Row(
       children: [
+        if (_modelLink != null)
+          Expanded(
+            flex: 1,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ProductARViewerPage(
+                      modelUrl: _modelLink!,
+                      productName: widget.product.name,
+                    ),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.deepPurple,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: _loadingModel
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.view_in_ar, color: Colors.white, size: 18),
+                          SizedBox(width: 6),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+        if (_modelLink != null) const SizedBox(width: 16),
         Expanded(
           flex: 1,
           child: ElevatedButton(
@@ -798,12 +850,23 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             ),
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: Text(
-                'Virtual Try On',
-                style: TextStyle(
-                  fontSize: rf(context, 16),
-                  color: Colors.white,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.face_retouching_natural,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 6),
+                  // Text(
+                  //   'Virtual Try On',
+                  //   style: TextStyle(
+                  //     fontSize: rf(context, 16),
+                  //     color: Colors.white,
+                  //   ),
+                  // ),
+                ],
               ),
             ),
           ),
@@ -838,18 +901,54 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             ),
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: Text(
-                'Add to cart',
-                style: TextStyle(
-                  fontSize: rf(context, 16),
-                  color: Colors.black,
-                ),
+              child: const Icon(
+                Icons.shopping_cart_checkout_outlined,
+                color: Colors.white,
+                size: 18,
               ),
             ),
           ),
         ),
       ],
     );
+  }
+
+  Future<void> _load3DModel() async {
+    setState(() {
+      _loadingModel = true;
+    });
+    try {
+      print("Loading 3D model for product ID: ${widget.product.id}");
+      final envServer = dotenv.env['SERVER_URL'] ?? '';
+      String base = envServer.isNotEmpty ? envServer : '';
+      print("base is '$base'");
+      if (base.endsWith('/rest/v1')) {
+        base = base.substring(0, base.length - '/rest/v1'.length);
+      }
+      if (base.endsWith('/')) base = base.substring(0, base.length - 1);
+      if (base.isEmpty) return; // cannot resolve
+      final uri = Uri.parse('$base/products/${widget.product.id}/3dmodel');
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null)
+        headers['Authorization'] = 'Bearer ${session.accessToken}';
+      final resp = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 10));
+
+      if (resp.statusCode == 200) {
+        final map = jsonDecode(resp.body) as Map<String, dynamic>?;
+        final link = map?['model_link'] as String?;
+        print('3D model response:');
+        print(map);
+        if (link != null && mounted) setState(() => _modelLink = link);
+      }
+    } catch (e) {
+      // swallow errors silently; AR button just won't show
+      print('3D model load error: $e');
+    } finally {
+      if (mounted) setState(() => _loadingModel = false);
+    }
   }
 
   Widget _buildReviewSection() {

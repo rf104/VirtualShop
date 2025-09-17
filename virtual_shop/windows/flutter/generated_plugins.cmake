@@ -5,11 +5,14 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   app_links
   desktop_webview_auth
+  dynamic_color
   file_selector_windows
   firebase_auth
   firebase_core
   flutter_tts
+  pcmtowave
   permission_handler_windows
+  record_windows
   url_launcher_windows
 )
 

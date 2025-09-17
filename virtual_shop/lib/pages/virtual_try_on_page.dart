@@ -29,52 +29,69 @@ class VirtualTryOnImagePicker extends StatefulWidget {
 
 class _VirtualTryOnImagePickerState extends State<VirtualTryOnImagePicker> {
   final ImagePicker _picker = ImagePicker();
+  bool _picking =
+      false; // reentrancy guard to avoid multiple simultaneous camera acquisitions
 
   Future<void> _pickAndEditImage(ImageSource source) async {
-    final XFile? pickedFile = await _picker.pickImage(source: source);
-    if (pickedFile == null) return;
+    if (_picking)
+      return; // prevent double taps opening multiple camera sessions
+    _picking = true;
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        maxWidth: 2048, // constrain to reduce decoder + palette memory pressure
+        maxHeight: 2048,
+        imageQuality: 92, // keep reasonable quality while shrinking file size
+      );
+      if (pickedFile == null) return;
 
-    final Uint8List imageBytes = await pickedFile.readAsBytes();
+      final Uint8List imageBytes = await pickedFile.readAsBytes();
 
-    if (!mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ProImageEditor.memory(
-          imageBytes,
-          callbacks: ProImageEditorCallbacks(
-            onImageEditingComplete: (Uint8List editedBytes) async {
-              widget.onImagePicked(editedBytes);
-              Navigator.of(context, rootNavigator: true).pop();
-            },
-          ),
-          configs: ProImageEditorConfigs(
-            designMode: platformDesignMode,
-            theme: Theme.of(context).copyWith(
-              iconTheme: Theme.of(
-                context,
-              ).iconTheme.copyWith(color: Colors.white),
+      if (!mounted) return;
+      // Push editor so processing does not block UI thread longer than needed
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ProImageEditor.memory(
+            imageBytes,
+            callbacks: ProImageEditorCallbacks(
+              onImageEditingComplete: (Uint8List editedBytes) async {
+                widget.onImagePicked(editedBytes);
+                if (context.mounted) {
+                  Navigator.of(context, rootNavigator: true).pop();
+                }
+              },
             ),
-            mainEditor: MainEditorConfigs(
-              widgets: MainEditorWidgets(
-                closeWarningDialog: (editor) async {
-                  if (!context.mounted) return false;
-                  return await showDialog<bool>(
-                        context: context,
-                        builder: (BuildContext context) =>
-                            FrostedGlassCloseDialog(editor: editor),
-                      ) ??
-                      false;
-                },
-                appBar: (editor, rebuildStream) => null,
-                bottomBar: (editor, rebuildStream, key) => null,
-                bodyItems: _buildMainBodyWidgets,
+            configs: ProImageEditorConfigs(
+              designMode: platformDesignMode,
+              theme: Theme.of(context).copyWith(
+                iconTheme: Theme.of(
+                  context,
+                ).iconTheme.copyWith(color: Colors.white),
+              ),
+              mainEditor: MainEditorConfigs(
+                widgets: MainEditorWidgets(
+                  closeWarningDialog: (editor) async {
+                    if (!context.mounted) return false;
+                    return await showDialog<bool>(
+                          context: context,
+                          builder: (BuildContext context) =>
+                              FrostedGlassCloseDialog(editor: editor),
+                        ) ??
+                        false;
+                  },
+                  appBar: (editor, rebuildStream) => null,
+                  bottomBar: (editor, rebuildStream, key) => null,
+                  bodyItems: _buildMainBodyWidgets,
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
+      );
+    } finally {
+      _picking = false;
+    }
   }
 
   void _openStickerEditor(ProImageEditorState editor) async {

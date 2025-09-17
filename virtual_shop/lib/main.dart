@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:virtual_shop/pages/home_page.dart';
 import 'package:virtual_shop/pages/landing_page.dart';
-import 'package:virtual_shop/utils/theme.dart';
+import 'package:virtual_shop/utils/expressive_theme.dart';
 import 'package:virtual_shop/widgets/auth_gate.dart';
 import 'package:virtual_shop/pages/complete_profile_page.dart';
 
@@ -26,8 +26,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: lightTheme,
-      darkTheme: darkTheme,
+      theme: ExpressiveTheme.createLightTheme(),
+      darkTheme: ExpressiveTheme.createDarkTheme(),
+      themeMode: ThemeMode.system,
       routes: {
         '/complete_profile': (context) {
           final args =

@@ -9,6 +9,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:file_picker/file_picker.dart';
 // Pages are pushed via named routes inside SellerShell's nested Navigator.
 import 'package:virtual_shop/pages/my_products_sheet.dart';
 
@@ -1052,7 +1053,8 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                         isScrollControlled: true,
                         backgroundColor: Colors.transparent,
                         builder: (_) {
-                          final user = Supabase.instance.client.auth.currentUser;
+                          final user =
+                              Supabase.instance.client.auth.currentUser;
                           final sellerId = user?.id ?? '';
                           return MyProductsSheet(sellerId: sellerId);
                         },
@@ -1327,6 +1329,10 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
                 ],
               ),
             ),
+            const SizedBox(height: 25),
+            // 3D Model Upload Section
+            if (_sellerAuthId != null)
+              _ThreeDModelUploadCard(sellerAuthId: _sellerAuthId!),
             const SizedBox(height: 100), // Space for bottom nav
           ],
         ),
@@ -1736,6 +1742,276 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
       ],
     ),
   );
+}
+
+class _ThreeDModelUploadCard extends StatefulWidget {
+  final String sellerAuthId;
+  const _ThreeDModelUploadCard({required this.sellerAuthId});
+
+  @override
+  State<_ThreeDModelUploadCard> createState() => _ThreeDModelUploadCardState();
+}
+
+class _ThreeDModelUploadCardState extends State<_ThreeDModelUploadCard> {
+  bool _uploading = false;
+  String? _status;
+  String? _modelUrl;
+  String? _selectedProductId;
+  List<Map<String, dynamic>> _products = [];
+  bool _loadingProducts = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchProducts();
+  }
+
+  Future<void> _fetchProducts() async {
+    setState(() {
+      _loadingProducts = true;
+    });
+    try {
+      final baseEnv =
+          dotenv.env['SERVER_URL'] ??
+          dotenv.env['BACKEND_URL'] ??
+          'http://127.0.0.1:8000';
+      final base = baseEnv.endsWith('/')
+          ? baseEnv.substring(0, baseEnv.length - 1)
+          : baseEnv;
+      final uri = Uri.parse('$base/sellers/${widget.sellerAuthId}/products');
+      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (resp.statusCode == 200) {
+        final data = json.decode(resp.body) as Map<String, dynamic>;
+        final list = (data['products'] as List?) ?? [];
+        setState(() {
+          _products = list.cast<Map<String, dynamic>>();
+          if (_products.isNotEmpty) {
+            _selectedProductId = _products.first['id'].toString();
+          }
+        });
+      } else {
+        setState(() {
+          _status = 'Failed to load products (${resp.statusCode})';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _status = 'Error loading products: $e';
+      });
+    } finally {
+      setState(() {
+        _loadingProducts = false;
+      });
+    }
+  }
+
+  Future<void> _pickAndUpload() async {
+    if ((_selectedProductId ?? '').isEmpty) {
+      setState(() => _status = 'Select a product');
+      return;
+    }
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['glb', 'gltf', 'usdz'],
+      );
+      if (result == null || result.files.isEmpty) return; // cancelled
+      final picked = result.files.first;
+      final fileName = picked.name;
+      final ext = (picked.extension ?? fileName.split('.').last).toLowerCase();
+      if (!['glb', 'gltf', 'usdz'].contains(ext)) {
+        setState(() => _status = 'Unsupported file type: .$ext');
+        return;
+      }
+      setState(() {
+        _uploading = true;
+        _status = 'Uploading...';
+      });
+      final baseEnv =
+          dotenv.env['SERVER_URL'] ??
+          dotenv.env['BACKEND_URL'] ??
+          'http://127.0.0.1:8000';
+      final base = baseEnv.endsWith('/')
+          ? baseEnv.substring(0, baseEnv.length - 1)
+          : baseEnv;
+      final uri = Uri.parse(
+        '$base/products/${_selectedProductId!.trim()}/3dmodel',
+      );
+      final session = Supabase.instance.client.auth.currentSession;
+      final req = http.MultipartRequest('POST', uri);
+      if (session != null) {
+        req.headers['Authorization'] = 'Bearer ${session.accessToken}';
+      }
+      if (picked.path != null) {
+        req.files.add(
+          await http.MultipartFile.fromPath(
+            'file',
+            picked.path!,
+            filename: fileName,
+          ),
+        );
+      } else if (picked.bytes != null) {
+        req.files.add(
+          http.MultipartFile.fromBytes(
+            'file',
+            picked.bytes!,
+            filename: fileName,
+          ),
+        );
+      } else {
+        setState(() {
+          _uploading = false;
+          _status = 'No file data available';
+        });
+        return;
+      }
+      final resp = await req.send();
+      final body = await resp.stream.bytesToString();
+      if (resp.statusCode == 200 || resp.statusCode == 201) {
+        try {
+          final data = json.decode(body) as Map<String, dynamic>;
+          setState(() {
+            _modelUrl = data['model_link'] as String?;
+            _status = 'Uploaded';
+          });
+        } catch (_) {
+          setState(() => _status = 'Uploaded (parse error)');
+        }
+      } else {
+        setState(() => _status = 'Failed (${resp.statusCode})');
+      }
+    } catch (e) {
+      setState(() => _status = 'Error: $e');
+    } finally {
+      setState(() => _uploading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xff6a11cb), Color(0xff2575fc)],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.view_in_ar,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Text(
+                  '3D / AR Models',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_loadingProducts)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: LinearProgressIndicator(minHeight: 4),
+            ),
+          if (!_loadingProducts && _products.isEmpty)
+            const Text(
+              'No products found. Add a product first.',
+              style: TextStyle(color: Colors.white54),
+            )
+          else if (_products.isNotEmpty)
+            DropdownButtonFormField<String>(
+              value: _selectedProductId,
+              items: _products.map((p) {
+                final name = (p['name'] ?? 'Unnamed').toString();
+                final id = p['id'].toString();
+                return DropdownMenuItem<String>(
+                  value: id,
+                  child: Text(name, overflow: TextOverflow.ellipsis),
+                );
+              }).toList(),
+              dropdownColor: Colors.grey[850],
+              decoration: const InputDecoration(
+                labelText: 'Select Product',
+                labelStyle: TextStyle(color: Colors.white70),
+                enabledBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white24),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white54),
+                ),
+              ),
+              onChanged: (v) => setState(() {
+                _selectedProductId = v;
+              }),
+            ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: IconButton(
+              tooltip: 'Refresh list',
+              onPressed: _loadingProducts ? null : _fetchProducts,
+              icon: const Icon(Icons.refresh, color: Colors.white54),
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: _uploading ? null : _pickAndUpload,
+            icon: const Icon(Icons.upload_file),
+            label: Text(_uploading ? 'Uploading...' : 'Upload 3D Model'),
+          ),
+          if (_status != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _status!,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ],
+          if (_modelUrl != null) ...[
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: () {},
+              child: Text(
+                _modelUrl!,
+                style: const TextStyle(
+                  color: Colors.lightBlueAccent,
+                  fontSize: 12,
+                  decoration: TextDecoration.underline,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 // Analytics Card with same styling

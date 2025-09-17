@@ -3,11 +3,13 @@ import 'package:virtual_shop/pages/all_product_page.dart';
 import 'package:virtual_shop/pages/all_story.dart';
 import 'package:virtual_shop/pages/cart_page.dart';
 import 'package:virtual_shop/pages/chat_assistant_page.dart';
-import 'package:virtual_shop/pages/notification_page.dart';
+import 'package:virtual_shop/pages/NotificationPage.dart';
 import 'package:virtual_shop/pages/profile_page.dart';
 import 'package:virtual_shop/pages/seller_shell.dart';
 import 'package:virtual_shop/widgets/glass_container.dart';
+import 'package:virtual_shop/widgets/animated_tab_glass.dart';
 import 'package:virtual_shop/utils/supabase_service.dart';
+import 'package:virtual_shop/utils/cart_api.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -19,13 +21,16 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   int _bottomNavIndex = 0;
   late TabController _tabController;
-  String? _userType; // 'Seller' or 'Normal User'
+  String? _userType;
+  bool _shouldAnimateGlass = false;
+  int _cartItemCount = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadUserType();
+    _loadCartCount();
   }
 
   @override
@@ -42,7 +47,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       if (!mounted) return;
       setState(() {
         _userType = (profile?['user_type'] as String?)?.trim();
-        // Keep selected tab valid based on role
         final isSeller = _userType == 'Seller';
         if (isSeller && _bottomNavIndex == 6) {
           _bottomNavIndex = 7;
@@ -50,71 +54,164 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           _bottomNavIndex = 6;
         }
       });
+    } catch (_) {}
+  }
+
+  Future<void> _loadCartCount() async {
+    try {
+      final cartItems = await CartApi.getCart();
+      if (!mounted) return;
+      setState(() {
+        _cartItemCount = cartItems.length;
+      });
     } catch (_) {
-      // Silently ignore; default (non-seller) UI will be shown
+      // If error occurs (e.g., not signed in), keep count as 0
+      if (mounted) {
+        setState(() {
+          _cartItemCount = 0;
+        });
+      }
     }
   }
 
   Widget _buildNavItem(IconData icon, int index) {
     bool isSelected = _bottomNavIndex == index;
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _bottomNavIndex = index;
-        });
-      },
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFADFF2F) : Colors.transparent,
-          shape: BoxShape.circle,
+    bool shouldAnimate = _shouldAnimateGlass && isSelected;
+
+    int lastTabIndex = (_userType ?? 'Normal User') == 'Seller' ? 7 : 6;
+
+    EdgeInsets extraPadding = EdgeInsets.zero;
+    if (_bottomNavIndex == 0 && index == lastTabIndex) {
+      extraPadding = const EdgeInsets.only(right: 20);
+    } else if (_bottomNavIndex == lastTabIndex && index == 0) {
+      extraPadding = const EdgeInsets.only(left: 20);
+    } else if (_bottomNavIndex != 0 && _bottomNavIndex != lastTabIndex) {
+      if (index == 0) {
+        extraPadding = const EdgeInsets.only(left: 10);
+      } else if (index == lastTabIndex) {
+        extraPadding = const EdgeInsets.only(right: 10);
+      }
+    }
+
+    return Padding(
+      padding: extraPadding,
+      child: GestureDetector(
+        onTap: () {
+          if (_bottomNavIndex != index) {
+            setState(() {
+              _bottomNavIndex = index;
+              _shouldAnimateGlass = true;
+            });
+            // Refresh cart count when navigating to any page (in case user added items)
+            if (index != 3) {
+              // Don't refresh when going to cart page, it has its own callback
+              _loadCartCount();
+            }
+            Future.delayed(const Duration(milliseconds: 50), () {
+              if (mounted) {
+                setState(() {
+                  _shouldAnimateGlass = false;
+                });
+              }
+            });
+          }
+        },
+        child: AnimatedTabGlass(
+          isSelected: isSelected,
+          shouldAnimate: shouldAnimate,
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            child: Icon(
+              icon,
+              color: isSelected ? const Color(0xFFADFF2F) : Colors.white,
+            ),
+          ),
         ),
-        child: Icon(icon, color: isSelected ? Colors.black : Colors.white),
       ),
     );
   }
 
   Widget _buildNavItemWithBadge(IconData icon, int index, int count) {
     bool isSelected = _bottomNavIndex == index;
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _bottomNavIndex = index;
-        });
-      },
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFFADFF2F) : Colors.transparent,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: isSelected ? Colors.black : Colors.white),
-          ),
-          if (count > 0)
-            Positioned(
-              right: -4,
-              top: -4,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(
-                  color: Colors.red,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  '$count',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
+    bool shouldAnimate = _shouldAnimateGlass && isSelected;
+
+    // Determine the last tab index based on user type
+    int lastTabIndex = (_userType ?? 'Normal User') == 'Seller' ? 7 : 6;
+
+    // Calculate padding based on selected tab
+    EdgeInsets extraPadding = EdgeInsets.zero;
+    if (_bottomNavIndex == 0 && index == lastTabIndex) {
+      extraPadding = const EdgeInsets.only(right: 20);
+    } else if (_bottomNavIndex == lastTabIndex && index == 0) {
+      extraPadding = const EdgeInsets.only(left: 20);
+    } else if (_bottomNavIndex != 0 && _bottomNavIndex != lastTabIndex) {
+      if (index == 0) {
+        extraPadding = const EdgeInsets.only(left: 10);
+      } else if (index == lastTabIndex) {
+        extraPadding = const EdgeInsets.only(right: 10);
+      }
+    }
+
+    return Padding(
+      padding: extraPadding,
+      child: GestureDetector(
+        onTap: () {
+          if (_bottomNavIndex != index) {
+            setState(() {
+              _bottomNavIndex = index;
+              _shouldAnimateGlass = true;
+            });
+            // Refresh cart count when navigating to any page (in case user added items)
+            if (index != 3) {
+              // Don't refresh when going to cart page, it has its own callback
+              _loadCartCount();
+            }
+            Future.delayed(const Duration(milliseconds: 50), () {
+              if (mounted) {
+                setState(() {
+                  _shouldAnimateGlass = false;
+                });
+              }
+            });
+          }
+        },
+        child: AnimatedTabGlass(
+          isSelected: isSelected,
+          shouldAnimate: shouldAnimate,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                child: Icon(
+                  icon,
+                  color: isSelected ? const Color(0xFFADFF2F) : Colors.white,
                 ),
               ),
-            ),
-        ],
+              if (count > 0)
+                Positioned(
+                  right: -4,
+                  top: -4,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '$count',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -126,7 +223,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       case 1:
         return const AllProductPage(key: ValueKey('AllProductPage'));
       case 3:
-        return const CartPage(key: ValueKey('CartPage'));
+        return CartPage(
+          key: const ValueKey('CartPage'),
+          onCartChanged: _loadCartCount,
+        );
       case 4:
         return const ChatAssistantPage(key: ValueKey('ChatAssistantPage'));
       case 5:
@@ -152,23 +252,24 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           Positioned(
             left: 10,
             right: 10,
-            bottom: 20,
+            bottom: 30,
             child: GlassContainer(
               width: MediaQuery.of(context).size.width - 20,
               height: 70,
-              borderRadius: 30,
+              borderRadius: 50,
               color: Colors.black.withOpacity(0.2),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     _buildNavItem(Icons.home, 0),
                     _buildNavItem(Icons.checkroom, 1),
-                    _buildNavItemWithBadge(Icons.shopping_bag_outlined, 3, 4),
+                    _buildNavItemWithBadge(
+                      Icons.shopping_bag_outlined,
+                      3,
+                      _cartItemCount,
+                    ),
                     _buildNavItem(Icons.bubble_chart, 4),
                     _buildNavItem(Icons.notifications, 5),
                     if ((_userType ?? 'Normal User') != 'Seller')

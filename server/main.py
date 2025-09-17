@@ -1,3 +1,4 @@
+from fastapi import UploadFile as _UploadFile, File as _File
 from typing import Optional, List
 import io
 import uuid
@@ -380,71 +381,26 @@ def list_products():
     client = getattr(app.state, "supabase", None)
     if client is None:
         raise HTTPException(status_code=500, detail="Supabase not configured")
-    try:
-        prod_res = (
-            client.table("products")
-            .select(
-                "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
-            )
-            .execute()
-        )
-        if getattr(prod_res, "error", None):
-            raise HTTPException(status_code=400, detail=str(prod_res.error))
-        prods = prod_res.data or []
-        if not prods:
-            return []
-
-        # Batch fetch first image per product (single query) instead of N queries
-        product_ids = [p["id"] for p in prods if p.get("id")]
-        img_map: dict[str, str] = {}
-        try:
-            img_res = (
-                client.table("product_images")
-                .select("product_id,image_url,created_at")
-                .in_("product_id", product_ids)
-                .order("created_at", desc=False)
-                .execute()
-            )
-            if not getattr(img_res, "error", None):
-                seen = set()
-                for row in img_res.data or []:
-                    pid = str(row.get("product_id"))
-                    if pid and pid not in seen:
-                        img_map[pid] = row.get("image_url")
-                        seen.add(pid)
-        except Exception as e:
-            # Log but don't fail entire endpoint
-            print(f"Debug: product_images batch fetch failed: {e}")
-
-        out = []
-        for p in prods:
-            obj = dict(p)
-            pid = str(p.get("id"))
-            if pid in img_map:
-                obj["image_url"] = img_map[pid]
-            out.append(obj)
-        return out
-    except HTTPException:
-        raise
-    except Exception as e:
-        # Handle httpx RemoteProtocolError or other transient failures gracefully
-        print(f"Debug: Exception in list_products (fallback without images): {e}")
-        try:
-            # Attempt a minimal retry without images
-            prod_res = (
-                client.table("products")
-                .select(
-                    "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
-                )
-                .execute()
-            )
-            if getattr(prod_res, "error", None):
-                raise HTTPException(status_code=400, detail=str(prod_res.error))
-            return prod_res.data or []
-        except Exception as inner:
-            raise HTTPException(
-                status_code=500, detail=f"Failed to list products: {inner}"
-            )
+    # Fetch products and left join first image per product via nested select
+    # Note: PostgREST doesn't do arbitrary joins; we rely on a view or nested select
+    # Here we select products and then fetch first image per product in a second query
+    prod_res = client.table("products").select(
+        "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating").execute()
+    if getattr(prod_res, "error", None):
+        raise HTTPException(status_code=400, detail=str(prod_res.error))
+    prods = prod_res.data or []
+    out = []
+    for p in prods:
+        img_res = client.table("product_images").select("image_url").eq(
+            "product_id", p["id"]).order("created_at", desc=False).limit(1).execute()
+        image_url = None
+        if not getattr(img_res, "error", None) and img_res.data:
+            image_url = img_res.data[0].get("image_url")
+        obj = dict(p)
+        if image_url:
+            obj["image_url"] = image_url
+        out.append(obj)
+    return out
 
 
 @app.get("/products/by_ids")
@@ -590,6 +546,138 @@ def get_product(product_id: uuid.UUID):
     return p
 
 
+# ---------------------- 3D MODEL (AR) ENDPOINTS ----------------------
+
+@app.get("/products/{product_id}/3dmodel")
+def get_product_3d_model(product_id: str):
+    """Return latest 3D model link for a product (if any).
+
+    Response: { "product_id": str, "model_link": str } or 404 if none.
+    """
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    res = client.table("tdmodel").select("id,model_link,product_id,created_at").eq(
+        "product_id", product_id).order("created_at", desc=True).limit(1).execute()
+    if getattr(res, "error", None):
+        raise HTTPException(status_code=400, detail=str(res.error))
+    rows = res.data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="3D model not found")
+    row = rows[0]
+    return {"product_id": row.get("product_id"), "model_link": row.get("model_link")}
+
+
+@app.post("/products/{product_id}/3dmodel")
+async def upload_product_3d_model(
+    product_id: str,
+    file: _UploadFile = _File(...),
+    authorization: str | None = Header(default=None),
+):
+    """Upload a 3D model (glb/gltf/usdz) for a product and record link in tdmodel table.
+
+    - Requires bearer token; user must own the product (auth_id matches token user id).
+    - Stores file in Supabase Storage bucket `tdmodel` (env TDMODEL_BUCKET overrides).
+    - Inserts a row into `tdmodel` table (does not delete older rows; latest is used by GET).
+    Returns: { ok: true, model_link: str }
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    # Verify product ownership
+    pres = client.table("products").select("id,auth_id").eq(
+        "id", product_id).limit(1).execute()
+    if getattr(pres, "error", None):
+        raise HTTPException(status_code=400, detail=str(pres.error))
+    rows = pres.data or []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Product not found")
+    prod = rows[0]
+    if str(prod.get("auth_id")) != str(user_id):
+        raise HTTPException(status_code=403, detail="Not owner of product")
+
+    # Validate file extension
+    filename = file.filename or "model.glb"
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "glb"
+    if ext not in {"glb", "gltf", "usdz"}:
+        raise HTTPException(
+            status_code=400, detail="Unsupported model type (allowed: glb,gltf,usdz)")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file upload")
+    if len(content) > 50 * 1024 * 1024:  # 50MB guard
+        raise HTTPException(
+            status_code=400, detail="File too large (max 50MB)")
+
+    bucket = os.getenv("TDMODEL_BUCKET", "tdmodel")
+    _ensure_bucket(client, bucket)
+
+    key = f"{product_id}/{uuid.uuid4()}.{ext}"
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+            tmp.write(content)
+            tmp.flush()
+            tmp_path = tmp.name
+        # Upload
+        client.storage.from_(bucket).upload(
+            file=tmp_path,
+            path=key,
+            file_options={
+                "content-type": file.content_type or ("model/gltf-binary" if ext == "glb" else "application/octet-stream"),
+                "upsert": False,
+            },
+        )
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+
+    url_resp = client.storage.from_(bucket).get_public_url(key)
+    if isinstance(url_resp, str):
+        model_url = url_resp
+    elif isinstance(url_resp, dict):
+        model_url = url_resp.get("publicUrl") or url_resp.get(
+            "public_url") or url_resp.get("url")
+    else:
+        model_url = str(url_resp)
+
+    # Insert row into tdmodel table
+    row = {"model_link": model_url, "product_id": product_id, "auth_id": user_id}
+    ins = client.table("tdmodel").insert(row).execute()
+    if getattr(ins, "error", None):
+        raise HTTPException(status_code=400, detail=str(ins.error))
+
+    # Optionally create a notification to followers / shoppers (skipped for now)
+    try:
+        create_notification(
+            recipient_auth_id=user_id,
+            notification_type="model_upload",
+            title="3D Model Uploaded",
+            message=f"3D model added for product {product_id[:8]}",
+            sender_auth_id=user_id,
+            entity_type="product",
+            entity_id=product_id,
+            metadata={"model_link": model_url},
+        )
+    except Exception:
+        pass
+
+    return {"ok": True, "model_link": model_url}
+
+
 def _get_clip() -> SentenceTransformer:
     if Models.clip is None:
         # OpenAI CLIP ViT-B/32. SentenceTransformers handles image+text.
@@ -682,32 +770,70 @@ def get_product_reviews(product_id: str, limit: int | None = None):
     if client is None:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
+    # Helper: execute a supabase query with retries on transient HTTP2 disconnects
+    def _exec_with_retry(builder, max_attempts: int = 3):
+        last_err = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return builder.execute()
+            except httpx.RemoteProtocolError as e:  # type: ignore
+                last_err = e
+                if attempt == max_attempts:
+                    raise
+                continue  # retry
+            except Exception as e:  # other exceptions: do not retry extensively
+                last_err = e
+                if attempt == max_attempts:
+                    raise
+                continue
+        if last_err:
+            raise last_err  # pragma: no cover
+
     q = client.table("reviews").select(
         "id,product_id,user_auth_id,rating,review,created_at"
     ).eq("product_id", product_id).order("created_at", desc=True)
     if limit is not None and int(limit) > 0:
         q = q.limit(int(limit))
-    res = q.execute()
+    try:
+        res = _exec_with_retry(q)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400, detail=f"Failed to load reviews: {e}")
     if getattr(res, "error", None):
         raise HTTPException(status_code=400, detail=str(res.error))
     rows = res.data or []
 
-    # Summary across ALL reviews for this product (unbounded)
-    sum_cnt = client.table("reviews").select(
-        "rating").eq("product_id", product_id).execute()
+    # Summary across ALL reviews for this product (unbounded). If this fails, fall back to limited rows.
     cnt = 0
     avg = 0.0
-    if not getattr(sum_cnt, "error", None):
-        ratings = sum_cnt.data or []
-        cnt = len(ratings)
+    try:
+        sum_builder = client.table("reviews").select(
+            "rating").eq("product_id", product_id)
+        sum_cnt = _exec_with_retry(sum_builder)
+        if not getattr(sum_cnt, "error", None):
+            ratings = sum_cnt.data or []
+            cnt = len(ratings)
+            if cnt:
+                s = 0
+                for r in ratings:
+                    try:
+                        s += int(r.get("rating") or 0)
+                    except Exception:
+                        pass
+                avg = float(s) / float(cnt) if cnt else 0.0
+    except Exception as e:
+        # Graceful degradation: compute summary from currently fetched (possibly limited) rows
+        cnt = len(rows)
         if cnt:
             s = 0
-            for r in ratings:
+            for r in rows:
                 try:
                     s += int(r.get("rating") or 0)
                 except Exception:
                     pass
             avg = float(s) / float(cnt) if cnt else 0.0
+        # Log error for observability (print since no logger configured)
+        print(f"[reviews] summary fallback due to error: {e}")
 
     # Enrich with user info from public.users by auth_id
     auth_ids = list({r.get("user_auth_id")
@@ -767,99 +893,68 @@ def submit_product_review(product_id: str, payload: dict, authorization: str | N
     if client is None:
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
-    row = {
-        "product_id": product_id,
-        "user_auth_id": user_id,
-        "rating": rating,
-        "review": review_text,
-    }
-    updated = False
-    # Try insert first; handle unique constraint (23505) by updating existing row
     try:
+        # Get product details first
+        product_result = client.table("products").select(
+            "id,name,auth_id"
+        ).eq("id", product_id).execute()
+
+        if getattr(product_result, "error", None) or not product_result.data:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        product = product_result.data[0]
+
+        row = {
+            "product_id": product_id,
+            "user_auth_id": user_id,
+            "rating": rating,
+            "review": review_text,
+        }
         res = client.table("reviews").insert(row).execute()
         if getattr(res, "error", None):
-            err = res.error
-            code = None
-            try:
-                code = getattr(err, "code", None) or (
-                    err.get("code") if isinstance(err, dict) else None
-                )
-            except Exception:
-                pass
-            if code == "23505":
-                # fall through to update path below
-                raise Exception("UNIQUE_VIOLATION_23505")
-            raise HTTPException(status_code=400, detail=str(err))
+            raise HTTPException(status_code=400, detail=str(res.error))
         data = res.data
-    except Exception as e:
-        # postgrest may raise APIError directly; detect duplicate and update
-        msg = str(e)
-        code = getattr(e, "code", None)
-        is_duplicate = (
-            code == "23505"
-            or "duplicate key value" in msg
-            or "UNIQUE_VIOLATION_23505" in msg
-        )
-        if not is_duplicate:
-            raise HTTPException(status_code=400, detail=msg)
-        # Update existing review instead of failing
-        upd = (
-            client.table("reviews")
-            .update(
-                {
-                    "rating": rating,
-                    "review": review_text,
-                    "updated_at": datetime.utcnow().isoformat(),
-                }
-            )
-            .eq("product_id", product_id)
-            .eq("user_auth_id", user_id)
-            .execute()
-        )
-        if getattr(upd, "error", None):
-            raise HTTPException(status_code=400, detail=str(upd.error))
-        updated = True
-        data = upd.data
+        # Return the inserted row id if available
+        rid = None
+        if isinstance(data, list) and data:
+            rid = data[0].get("id")
+        elif isinstance(data, dict):
+            rid = data.get("id")
 
-    # Determine review id
-    rid = None
-    if isinstance(data, list) and data:
-        rid = data[0].get("id")
-    elif isinstance(data, dict):
-        rid = data.get("id")
-
-    # Recompute aggregate rating for product
-    agg = (
-        client.table("reviews").select("rating").eq("product_id", product_id).execute()
-    )
-    avg_rating = None
-    review_count = 0
-    if not getattr(agg, "error", None):
-        ratings = agg.data or []
-        review_count = len(ratings)
-        if review_count:
-            total = 0
-            for r in ratings:
-                try:
-                    total += int(r.get("rating") or 0)
-                except Exception:
-                    pass
-            avg_rating = round(total / review_count, 1)
-            # Persist on products.rating if different
+        # Send notification to product owner (but not if reviewing own product)
+        if product["auth_id"] != user_id:
             try:
-                client.table("products").update({"rating": avg_rating}).eq(
-                    "id", product_id
-                ).execute()
-            except Exception:
-                pass
+                # Get reviewer name
+                user_result = client.table("users").select(
+                    "name").eq("auth_id", user_id).execute()
+                user_name = "Someone"
+                if not getattr(user_result, "error", None) and user_result.data:
+                    user_name = user_result.data[0].get("name", "Someone")
 
-    return {
-        "ok": True,
-        "id": rid,
-        "updated": updated,
-        "avg_rating": avg_rating,
-        "review_count": review_count,
-    }
+                create_notification(
+                    recipient_auth_id=product["auth_id"],
+                    notification_type="review_received",
+                    title="New Review",
+                    message=f"You received a {rating}-star review for \"{product['name']}\"",
+                    sender_auth_id=user_id,
+                    entity_type="product",
+                    entity_id=product_id,
+                    action_url=f"/products/{product_id}",
+                    metadata={
+                        "product_name": product["name"],
+                        "rating": rating,
+                        "reviewer_name": user_name
+                    }
+                )
+            except Exception as e:
+                # Don't fail the review creation if notification fails
+                print(f"Failed to send review notification: {e}")
+
+        return {"ok": True, "id": rid}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
 # ---------------------- CART API (bridges to Supabase RPC) ----------------------
@@ -965,6 +1060,9 @@ def checkout(authorization: str | None = Header(default=None)):
     rpc_url = base.rstrip("/") + "/rest/v1/rpc/checkout_self"
     headers = {"apikey": anon, "Authorization": authorization}
 
+    # Get user ID for notifications
+    user_id = _get_user_from_authorization(authorization)
+
     # 1) call checkout RPC
     try:
         with httpx.Client(timeout=30.0) as s:
@@ -1033,6 +1131,27 @@ def checkout(authorization: str | None = Header(default=None)):
             # optional metadata to help debugging / bookkeeping
             "meta_shop_id": shop_id
         })
+
+        # Send order notifications
+        if user_id and shop_id and shop_id != user_id:
+            try:
+                create_notification(
+                    recipient_auth_id=shop_id,
+                    notification_type="order_placed",
+                    title="New Order",
+                    message=f"You have a new order #{order_id}",
+                    sender_auth_id=user_id,
+                    entity_type="order",
+                    entity_id=order_id,
+                    action_url=f"/orders/{order_id}",
+                    metadata={
+                        "order_id": order_id,
+                        "amount": str(amt)
+                    },
+                    priority="high"
+                )
+            except Exception as e:
+                print(f"Failed to send order notification: {e}")
 
     # If nothing to do
     if not payments_payload_by_order:
@@ -1499,7 +1618,80 @@ async def create_story(
     except Exception:
         pass
 
+    # Notify followers about new story (if this user has followers)
+    try:
+        # This would require a followers table - for now we'll skip this notification
+        # In a real app, you'd query followers and send notifications to each
+        pass
+    except Exception as e:
+        print(f"Failed to send story notifications: {e}")
+
     return created
+
+
+@app.post("/stories/{story_id}/like")
+def like_story(
+    story_id: str,
+    authorization: str | None = Header(default=None)
+):
+    """Like a story and send notification to the story owner."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        # Get story details
+        story_result = client.table("stories").select(
+            "id,user_auth_id,caption"
+        ).eq("id", story_id).execute()
+
+        if getattr(story_result, "error", None) or not story_result.data:
+            raise HTTPException(status_code=404, detail="Story not found")
+
+        story = story_result.data[0]
+
+        # Don't send notification if user likes their own story
+        if story["user_auth_id"] == user_id:
+            return {"ok": True, "message": "Story liked (no notification sent to self)"}
+
+        # Get user details for the notification
+        user_result = client.table("users").select(
+            "name").eq("auth_id", user_id).execute()
+        user_name = "Someone"
+        if not getattr(user_result, "error", None) and user_result.data:
+            user_name = user_result.data[0].get("name", "Someone")
+
+        # Create notification
+        create_notification(
+            recipient_auth_id=story["user_auth_id"],
+            notification_type="story_like",
+            title="Story Liked",
+            message=f"{user_name} liked your story",
+            sender_auth_id=user_id,
+            entity_type="story",
+            entity_id=story_id,
+            action_url=f"/stories/{story_id}",
+            metadata={
+                "sender_name": user_name,
+                "story_caption": story.get("caption", "")[:50] + "..." if story.get("caption") and len(story.get("caption", "")) > 50 else story.get("caption", "")
+            }
+        )
+
+        return {"ok": True, "message": "Story liked and notification sent"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {e}")
 
 
 @app.post("/image-search/search")
@@ -1941,6 +2133,7 @@ def get_sellers():
     sellers = seller_res.data or []
     return sellers
 
+
 @app.get("/users/{user_id}")
 def get_user_profile(user_id: str, authorization: str | None = Header(default=None)):
     """
@@ -1953,7 +2146,8 @@ def get_user_profile(user_id: str, authorization: str | None = Header(default=No
 
     # Allow users to access their own profile
     if auth_user_id != user_id:
-        raise HTTPException(status_code=403, detail="Can only access your own profile")
+        raise HTTPException(
+            status_code=403, detail="Can only access your own profile")
 
     client = getattr(app.state, "supabase", None)
     if client is None:
@@ -1961,7 +2155,8 @@ def get_user_profile(user_id: str, authorization: str | None = Header(default=No
 
     try:
         # Query by auth_id (not user_id)
-        response = client.table("users").select("*").eq("auth_id", user_id).execute()
+        response = client.table("users").select(
+            "*").eq("auth_id", user_id).execute()
 
         if getattr(response, "error", None):
             raise HTTPException(status_code=400, detail=str(response.error))
@@ -1976,7 +2171,8 @@ def get_user_profile(user_id: str, authorization: str | None = Header(default=No
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database query failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Database query failed: {str(e)}")
 
 
 # Update User Profile Info
@@ -2077,6 +2273,527 @@ async def update_user_profile(
         raise HTTPException(status_code=400, detail=str(update_res.error))
 
     return {"ok": True, "data": update_res.data}
+
+
+# ---------------------- NOTIFICATIONS API ----------------------
+
+@app.get("/notifications")
+def get_notifications(
+    authorization: str | None = Header(default=None),
+    limit: int = 20,
+    offset: int = 0,
+    status: str | None = None,
+    type: str | None = None
+):
+    """Get user notifications with pagination and filtering.
+
+    Query params:
+    - limit: max notifications to return (default 20, max 100)
+    - offset: offset for pagination (default 0)
+    - status: filter by status ('unread', 'read', 'all') - default shows unread and read
+    - type: filter by notification type
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    # Validate and limit the limit parameter
+    limit = min(max(1, limit), 100)
+    offset = max(0, offset)
+
+    # Build query
+    query = client.table("notifications").select(
+        "id,type,priority,title,message,action_url,entity_type,entity_id,metadata,status,created_at,read_at,sender_auth_id"
+    ).eq("recipient_auth_id", user_id).is_("deleted_at", "null")
+
+    # Add status filter
+    if status == "unread":
+        query = query.eq("status", "unread")
+    elif status == "read":
+        query = query.eq("status", "read")
+    elif status != "all":
+        # Default: show unread and read, but not deleted/archived
+        query = query.in_("status", ["unread", "read"])
+
+    # Add type filter
+    if type:
+        query = query.eq("type", type)
+
+    # Order by creation date (newest first) and apply pagination
+    query = query.order("created_at", desc=True).range(
+        offset, offset + limit - 1)
+
+    try:
+        result = query.execute()
+        if getattr(result, "error", None):
+            raise HTTPException(status_code=400, detail=str(result.error))
+
+        notifications = result.data or []
+
+        # Get sender information for notifications that have a sender
+        sender_ids = [n.get("sender_auth_id")
+                      for n in notifications if n.get("sender_auth_id")]
+        sender_info = {}
+
+        if sender_ids:
+            sender_result = client.table("users").select(
+                "auth_id,name,profile_image").in_("auth_id", sender_ids).execute()
+            if not getattr(sender_result, "error", None):
+                for user in sender_result.data or []:
+                    sender_info[user["auth_id"]] = {
+                        "name": user.get("name", ""),
+                        "profile_image": user.get("profile_image", "")
+                    }
+
+        # Enrich notifications with sender info
+        for notification in notifications:
+            sender_id = notification.get("sender_auth_id")
+            if sender_id and sender_id in sender_info:
+                notification["sender"] = sender_info[sender_id]
+            else:
+                notification["sender"] = None
+
+        return {
+            "notifications": notifications,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "has_more": len(notifications) == limit
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@app.post("/notifications/{notification_id}/read")
+def mark_notification_read(
+    notification_id: str,
+    authorization: str | None = Header(default=None)
+):
+    """Mark a notification as read."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        result = client.table("notifications").update({
+            "status": "read"
+        }).eq("id", notification_id).eq("recipient_auth_id", user_id).execute()
+
+        if getattr(result, "error", None):
+            raise HTTPException(status_code=400, detail=str(result.error))
+
+        if not result.data:
+            raise HTTPException(
+                status_code=404, detail="Notification not found")
+
+        return {"ok": True, "message": "Notification marked as read"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@app.post("/notifications/read-all")
+def mark_all_notifications_read(authorization: str | None = Header(default=None)):
+    """Mark all unread notifications as read for the user."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        result = client.table("notifications").update({
+            "status": "read"
+        }).eq("recipient_auth_id", user_id).eq("status", "unread").is_("deleted_at", "null").execute()
+
+        if getattr(result, "error", None):
+            raise HTTPException(status_code=400, detail=str(result.error))
+
+        count = len(result.data) if result.data else 0
+        return {"ok": True, "message": f"Marked {count} notifications as read"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@app.delete("/notifications/{notification_id}")
+def delete_notification(
+    notification_id: str,
+    authorization: str | None = Header(default=None)
+):
+    """Soft delete a notification."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        result = client.table("notifications").update({
+            "status": "deleted",
+            "deleted_at": datetime.now(timezone.utc).isoformat()
+        }).eq("id", notification_id).eq("recipient_auth_id", user_id).execute()
+
+        if getattr(result, "error", None):
+            raise HTTPException(status_code=400, detail=str(result.error))
+
+        if not result.data:
+            raise HTTPException(
+                status_code=404, detail="Notification not found")
+
+        return {"ok": True, "message": "Notification deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@app.get("/notifications/summary")
+def get_notification_summary(authorization: str | None = Header(default=None)):
+    """Get notification summary including unread count."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        # Get unread count
+        unread_result = client.table("notifications").select(
+            "id", count="exact"
+        ).eq("recipient_auth_id", user_id).eq("status", "unread").is_("deleted_at", "null").execute()
+
+        unread_count = unread_result.count if hasattr(
+            unread_result, 'count') else 0
+
+        # Get total count
+        total_result = client.table("notifications").select(
+            "id", count="exact"
+        ).eq("recipient_auth_id", user_id).is_("deleted_at", "null").execute()
+
+        total_count = total_result.count if hasattr(
+            total_result, 'count') else 0
+
+        return {
+            "unread_count": unread_count,
+            "total_count": total_count,
+            "has_unread": unread_count > 0
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+def create_notification(
+    recipient_auth_id: str,
+    notification_type: str,
+    title: str,
+    message: str,
+    sender_auth_id: str = None,
+    entity_type: str = None,
+    entity_id: str = None,
+    action_url: str = None,
+    metadata: dict = None,
+    priority: str = "normal",
+    expires_at: str = None
+):
+    """Helper function to create notifications programmatically."""
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise Exception("Supabase not configured")
+
+    try:
+        notification_data = {
+            "recipient_auth_id": recipient_auth_id,
+            "type": notification_type,
+            "title": title,
+            "message": message,
+            "priority": priority,
+            "metadata": metadata or {}
+        }
+
+        if sender_auth_id:
+            notification_data["sender_auth_id"] = sender_auth_id
+        if entity_type:
+            notification_data["entity_type"] = entity_type
+        if entity_id:
+            notification_data["entity_id"] = entity_id
+        if action_url:
+            notification_data["action_url"] = action_url
+        if expires_at:
+            notification_data["expires_at"] = expires_at
+
+        result = client.table("notifications").insert(
+            notification_data).execute()
+
+        if getattr(result, "error", None):
+            raise Exception(str(result.error))
+
+        return result.data[0] if result.data else None
+
+    except Exception as e:
+        raise Exception(f"Failed to create notification: {e}")
+
+
+# ---------------------- NOTIFICATION TRIGGERS ----------------------
+
+@app.post("/products/{product_id}/like")
+def like_product(
+    product_id: str,
+    authorization: str | None = Header(default=None)
+):
+    """Like a product and send notification to the product owner."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        # Get product details
+        product_result = client.table("products").select(
+            "id,name,auth_id"
+        ).eq("id", product_id).execute()
+
+        if getattr(product_result, "error", None) or not product_result.data:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        product = product_result.data[0]
+
+        # Don't send notification if user likes their own product
+        if product["auth_id"] == user_id:
+            return {"ok": True, "message": "Product liked (no notification sent to self)"}
+
+        # Get user details for the notification
+        user_result = client.table("users").select(
+            "name").eq("auth_id", user_id).execute()
+        user_name = "Someone"
+        if not getattr(user_result, "error", None) and user_result.data:
+            user_name = user_result.data[0].get("name", "Someone")
+
+        # Create notification
+        create_notification(
+            recipient_auth_id=product["auth_id"],
+            notification_type="product_like",
+            title="Product Liked",
+            message=f"{user_name} liked your product \"{product['name']}\"",
+            sender_auth_id=user_id,
+            entity_type="product",
+            entity_id=product_id,
+            action_url=f"/products/{product_id}",
+            metadata={
+                "product_name": product["name"],
+                "sender_name": user_name
+            }
+        )
+
+        return {"ok": True, "message": "Product liked and notification sent"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {e}")
+
+
+# ---------------------- BULK NOTIFICATION ENDPOINTS ----------------------
+
+@app.post("/notifications/send-bulk")
+def send_bulk_notification(
+    payload: dict,
+    authorization: str | None = Header(default=None)
+):
+    """Send bulk notifications to multiple users (admin only).
+
+    Body: {
+        "recipient_auth_ids": ["user1", "user2", ...],
+        "title": "Announcement",
+        "message": "Important update for all users",
+        "action_url": "/announcements/123",
+        "priority": "high",
+        "expires_in_hours": 72
+    }
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    # Check if user is admin (you'd implement proper admin check here)
+    # For now, we'll allow any authenticated user to send bulk notifications
+
+    recipient_ids = payload.get("recipient_auth_ids", [])
+    title = payload.get("title", "")
+    message = payload.get("message", "")
+    action_url = payload.get("action_url")
+    priority = payload.get("priority", "normal")
+    expires_in_hours = payload.get("expires_in_hours")
+
+    if not recipient_ids or not title or not message:
+        raise HTTPException(
+            status_code=400, detail="recipient_auth_ids, title, and message are required")
+
+    if not isinstance(recipient_ids, list):
+        raise HTTPException(
+            status_code=400, detail="recipient_auth_ids must be an array")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    # Calculate expiration time
+    expires_at = None
+    if expires_in_hours:
+        try:
+            hours = int(expires_in_hours)
+            expires_at = (datetime.now(timezone.utc) +
+                          timedelta(hours=hours)).isoformat()
+        except (ValueError, TypeError):
+            pass
+
+    # Send notifications to each recipient
+    successful = []
+    failed = []
+
+    for recipient_id in recipient_ids:
+        try:
+            notification = create_notification(
+                recipient_auth_id=recipient_id,
+                notification_type="bulk_announcement",
+                title=title,
+                message=message,
+                sender_auth_id=user_id,
+                action_url=action_url,
+                priority=priority,
+                expires_at=expires_at,
+                metadata={
+                    "is_bulk": True,
+                    "bulk_sent_at": datetime.now(timezone.utc).isoformat()
+                }
+            )
+            successful.append({"recipient_id": recipient_id, "notification_id": notification.get(
+                "id") if notification else None})
+        except Exception as e:
+            failed.append({"recipient_id": recipient_id, "error": str(e)})
+
+    return {
+        "ok": True,
+        "sent": len(successful),
+        "failed": len(failed),
+        "successful": successful,
+        "failed_recipients": failed
+    }
+
+
+@app.post("/users/{user_id}/follow")
+def follow_user(
+    user_id: str,
+    authorization: str | None = Header(default=None)
+):
+    """Follow a user and send notification.
+
+    Note: This assumes you have a followers table. 
+    For now, we'll just send the notification.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+
+    follower_id = _get_user_from_authorization(authorization)
+    if not follower_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    if follower_id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot follow yourself")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        # Check if user exists
+        user_result = client.table("users").select(
+            "auth_id,name").eq("auth_id", user_id).execute()
+        if getattr(user_result, "error", None) or not user_result.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Get follower name
+        follower_result = client.table("users").select(
+            "name").eq("auth_id", follower_id).execute()
+        follower_name = "Someone"
+        if not getattr(follower_result, "error", None) and follower_result.data:
+            follower_name = follower_result.data[0].get("name", "Someone")
+
+        # Here you would insert into a followers table
+        # For now, we'll just create the notification
+
+        # Create notification
+        create_notification(
+            recipient_auth_id=user_id,
+            notification_type="new_follower",
+            title="New Follower",
+            message=f"{follower_name} started following you",
+            sender_auth_id=follower_id,
+            entity_type="user",
+            entity_id=follower_id,
+            action_url=f"/profile/{follower_id}",
+            metadata={
+                "follower_name": follower_name
+            }
+        )
+
+        return {"ok": True, "message": f"Now following {user_result.data[0].get('name', 'user')}"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {e}")
 
 
 # ---------------------- ASSISTANT REST BRIDGE ----------------------
