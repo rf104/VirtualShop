@@ -17,6 +17,7 @@ import 'package:virtual_shop/utils/cart_api.dart';
 import 'package:virtual_shop/utils/related_products_service.dart';
 import 'package:virtual_shop/utils/review_service.dart';
 import 'package:virtual_shop/widgets/glass_container.dart';
+import 'package:virtual_shop/utils/like_service.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
@@ -46,6 +47,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   int _selectedStars = 0;
   String? _modelLink;
   bool _loadingModel = false;
+  bool _isOwner = false; // whether current user owns the product
+  bool _liked = false;
+  bool _liking = false;
 
   Future<void> _loadRelated() async {
     if ((widget.product.id).isEmpty) return;
@@ -274,12 +278,44 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     _loadRelated();
     _loadReviews();
     _load3DModel();
+    final user = Supabase.instance.client.auth.currentUser;
+    _isOwner = user != null && user.id == widget.product.authId;
+    _initLike();
   }
 
   @override
   void dispose() {
     _commentController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initLike() async {
+    try {
+      final liked = await LikeService.isLiked(widget.product.id);
+      if (mounted) setState(() => _liked = liked);
+    } catch (_) {}
+  }
+
+  Future<void> _toggleLike() async {
+    if (_liking) return;
+    setState(() => _liking = true);
+    try {
+      if (_liked) {
+        await LikeService.unlikeProduct(widget.product.id);
+        if (mounted) setState(() => _liked = false);
+      } else {
+        final ok = await LikeService.likeProduct(widget.product.id);
+        if (mounted && ok) setState(() => _liked = true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Like failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _liking = false);
+    }
   }
 
   Future<void> _updatePaletteGenerator() async {
@@ -395,35 +431,36 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               ),
               Row(
                 children: [
-                  // Edit button
-                  GlassContainer(
-                    borderRadius: 20.0,
-                    width: 40,
-                    height: 40,
-                    color: Colors.white.withOpacity(0.4),
-                    settings: OCLiquidGlassSettings(
-                      blendPx: 10.0,
-                      lightbandColor: _dominantColor,
-                      specAngle: 0.0,
-                      specStrength: 0.0,
-                    ),
-                    child: Center(
-                      child: IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.black),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  EditProductPage(product: widget.product),
-                            ),
-                          );
-                        },
-                        splashRadius: 22,
+                  if (_isOwner) ...[
+                    GlassContainer(
+                      borderRadius: 20.0,
+                      width: 40,
+                      height: 40,
+                      color: Colors.white.withOpacity(0.4),
+                      settings: OCLiquidGlassSettings(
+                        blendPx: 10.0,
+                        lightbandColor: _dominantColor,
+                        specAngle: 0.0,
+                        specStrength: 0.0,
+                      ),
+                      child: Center(
+                        child: IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.black),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    EditProductPage(product: widget.product),
+                              ),
+                            );
+                          },
+                          splashRadius: 22,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
+                    const SizedBox(width: 6),
+                  ],
                   // Favorite button
                   GlassContainer(
                     borderRadius: 20.0,
@@ -438,13 +475,22 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ),
                     child: Center(
                       child: IconButton(
-                        icon: const Icon(
-                          Icons.favorite_border,
-                          color: Colors.black,
-                        ),
-                        onPressed: () {
-                          // TODO: Implement favorite functionality
-                        },
+                        icon: _liking
+                            ? const SizedBox(
+                                height: 16,
+                                width: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation(
+                                    Colors.black,
+                                  ),
+                                ),
+                              )
+                            : Icon(
+                                _liked ? Icons.favorite : Icons.favorite_border,
+                                color: _liked ? Colors.redAccent : Colors.black,
+                              ),
+                        onPressed: _toggleLike,
                         splashRadius: 22,
                       ),
                     ),

@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:palette_generator/palette_generator.dart';
-import 'package:virtual_shop/pages/virtual_closet.dart';
+// Removed virtual closet feature; replaced with liked products list
+import 'package:virtual_shop/pages/liked_products_page.dart';
 import 'package:virtual_shop/models/product.dart';
-import 'package:virtual_shop/models/closet.dart';
+import 'package:virtual_shop/utils/like_service.dart';
+import 'package:virtual_shop/pages/product_detail_page.dart';
 import 'edit_profile_final.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:virtual_shop/utils/story_like_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -22,6 +28,13 @@ class _ProfilePageState extends State<ProfilePage> {
   PaletteGenerator? _cachedPalette;
   String? _lastPaletteKey;
   String _profileName = 'User';
+  int? _age;
+  int _storyLikers = 0;
+  double _purchaseTotal = 0.0;
+  int _purchaseCount = 0;
+  List<Map<String, dynamic>> _myStories = [];
+  bool _loadingStories = false;
+  String? _storiesError;
 
   Map<String, String>? _headersForUrl(String url) {
     final session = Supabase.instance.client.auth.currentSession;
@@ -73,8 +86,75 @@ class _ProfilePageState extends State<ProfilePage> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _updatePalette();
+          _fetchBackendProfile();
         }
       });
+    }
+  }
+
+  String? _serverBase() {
+    final envServer = dotenv.env['SERVER_URL'] ?? '';
+    if (envServer.isEmpty) return null;
+    var b = envServer.trim();
+    if (b.endsWith('/')) b = b.substring(0, b.length - 1);
+    return b;
+  }
+
+  Future<void> _fetchBackendProfile() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    final base = _serverBase();
+    if (base == null) return;
+    // starting backend fetch
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session == null) return;
+      final resp = await http.get(
+        Uri.parse('$base/users/${user.id}'),
+        headers: {'Authorization': 'Bearer ${session.accessToken}'},
+      );
+      if (resp.statusCode >= 400) return;
+      final map = jsonDecode(resp.body) as Map<String, dynamic>;
+      setState(() {
+        _age = map['age'] is int ? map['age'] as int : null;
+        _storyLikers = (map['story_likes_total'] is int)
+            ? map['story_likes_total'] as int
+            : 0;
+        if (map['purchase_total'] is num) {
+          _purchaseTotal = (map['purchase_total'] as num).toDouble();
+        }
+        if (map['purchase_count'] is num) {
+          _purchaseCount = (map['purchase_count'] as num).toInt();
+        }
+      });
+      await _loadMyStories(user.id);
+    } catch (_) {
+    } finally {
+      // no-op finalize
+    }
+  }
+
+  Future<void> _loadMyStories(String userAuthId) async {
+    setState(() {
+      _loadingStories = true;
+      _storiesError = null;
+    });
+    try {
+      final stories = await StoryLikeService.userStories(userAuthId, limit: 24);
+      if (mounted)
+        setState(() {
+          _myStories = stories;
+        });
+    } catch (e) {
+      if (mounted)
+        setState(() {
+          _storiesError = e.toString();
+        });
+    } finally {
+      if (mounted)
+        setState(() {
+          _loadingStories = false;
+        });
     }
   }
 
@@ -152,7 +232,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 const SizedBox(height: 30),
                 _buildThreadsSection(),
                 const SizedBox(height: 30),
-                _buildClosetsSection(),
+                _buildLikedProductsSection(),
                 const SizedBox(height: 30),
                 _buildMyPostsSection(context),
                 const SizedBox(height: 50),
@@ -166,35 +246,42 @@ class _ProfilePageState extends State<ProfilePage> {
 
   // Closet model
 
-  final List<Closet> _closets = [
-    Closet(
-      name: "Summer Outfits",
-      image: "assets/images/hat.jpg",
-      products: List<Product>.from(dummyProducts),
-    ),
-    Closet(
-      name: "Winter Wear",
-      image: "assets/images/hoodie.jpg",
-      products: List<Product>.from(dummyProducts),
-    ),
-    Closet(
-      name: "Eyewear",
-      image: "assets/images/eyeglass.png",
-      products: List<Product>.from(dummyProducts),
-    ),
-    Closet(
-      name: "Shoes",
-      image: "assets/images/glass1.jpg",
-      products: List<Product>.from(dummyProducts),
-    ),
-    Closet(
-      name: "Accessories",
-      image: "assets/images/love.png",
-      products: List<Product>.from(dummyProducts),
-    ),
-  ];
+  // --- Liked products preview ---
+  bool _loadingLikes = false;
+  List<Product> _likedPreview = [];
+  String? _likedError;
 
-  Widget _buildClosetsSection() {
+  Future<void> _loadLikedPreview() async {
+    setState(() {
+      _loadingLikes = true;
+      _likedError = null;
+    });
+    try {
+      final items = await LikeService.fetchLikedProducts();
+      if (mounted)
+        setState(() {
+          _likedPreview = items.take(10).toList();
+        });
+    } catch (e) {
+      if (mounted)
+        setState(() {
+          _likedError = e.toString();
+        });
+    } finally {
+      if (mounted)
+        setState(() {
+          _loadingLikes = false;
+        });
+    }
+  }
+
+  Widget _buildLikedProductsSection() {
+    // Load lazily after first frame to avoid jank
+    if (_likedPreview.isEmpty && !_loadingLikes && _likedError == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadLikedPreview();
+      });
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
@@ -204,271 +291,115 @@ class _ProfilePageState extends State<ProfilePage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'My Closets',
+                'Liked Products',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              IconButton(
-                icon: const Icon(Icons.add, color: Colors.white),
-                onPressed: _showCreateClosetDialog,
-                tooltip: 'Create Closet',
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const LikedProductsPage(),
+                    ),
+                  );
+                },
+                child: const Text('See All'),
               ),
             ],
           ),
           const SizedBox(height: 20),
           SizedBox(
-            height: 120,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _closets.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 15),
-              itemBuilder: (context, index) {
-                final closet = _closets[index];
-                return GestureDetector(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            VirtualClosetPage(products: closet.products),
-                      ),
-                    );
-                  },
-                  child: Column(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: Image.asset(
-                          closet.image,
-                          width: 70,
-                          height: 70,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          closet.name,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
+            height: 140,
+            child: _loadingLikes
+                ? const Center(child: CircularProgressIndicator())
+                : _likedError != null
+                ? Center(
+                    child: Text(
+                      _likedError!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  )
+                : _likedPreview.isEmpty
+                ? Center(
+                    child: Text(
+                      'No likes yet',
+                      style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                    ),
+                  )
+                : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _likedPreview.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder: (context, i) {
+                      final p = _likedPreview[i];
+                      return GestureDetector(
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ProductDetailPage(product: p),
                           ),
                         ),
-                      ),
-                    ],
+                        child: Container(
+                          width: 110,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: Image(
+                                  image: p.image.startsWith('http')
+                                      ? NetworkImage(p.image) as ImageProvider
+                                      : AssetImage(p.image),
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.all(6),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      p.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '৳${p.price.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        color: Colors.greenAccent,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
         ],
       ),
     );
   }
 
-  void _showCreateClosetDialog() async {
-    String closetName = '';
-    String? selectedImage;
-    List<Product> selectedProducts = [];
-    final List<String> closetImages = [
-      "assets/images/hat.jpg",
-      "assets/images/hoodie.jpg",
-      "assets/images/eyeglass.png",
-      "assets/images/glass1.jpg",
-      "assets/images/love.png",
-    ];
-    // For demo, use dummyProducts from virtual_closet.dart
-    final List<Product> allProducts = List<Product>.from(dummyProducts);
-
-    await showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              backgroundColor: Colors.black87,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              title: const Text(
-                'Create Closet',
-                style: TextStyle(color: Colors.white),
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'Closet Name',
-                        labelStyle: TextStyle(color: Colors.white70),
-                        enabledBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white38),
-                        ),
-                        focusedBorder: UnderlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white),
-                        ),
-                      ),
-                      onChanged: (val) => closetName = val,
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Select Image:',
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                    const SizedBox(height: 8),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: closetImages.map((img) {
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 10),
-                            child: GestureDetector(
-                              onTap: () => setState(() => selectedImage = img),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  border: Border.all(
-                                    color: selectedImage == img
-                                        ? Colors.greenAccent
-                                        : Colors.transparent,
-                                    width: 3,
-                                  ),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: Image.asset(
-                                    img,
-                                    width: 50,
-                                    height: 50,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Select Products:',
-                      style: TextStyle(color: Colors.white70),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 110,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: allProducts.map((prod) {
-                            final isSelected = selectedProducts.contains(prod);
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 10),
-                              child: GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    if (isSelected) {
-                                      selectedProducts.remove(prod);
-                                    } else {
-                                      selectedProducts.add(prod);
-                                    }
-                                  });
-                                },
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? Colors.greenAccent
-                                          : Colors.transparent,
-                                      width: 3,
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Image.asset(
-                                      prod.image,
-                                      width: 70,
-                                      height: 70,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text(
-                    'Cancel',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    if (closetName.isNotEmpty &&
-                        selectedImage != null &&
-                        selectedProducts.isNotEmpty) {
-                      setState(() {
-                        _closets.add(
-                          Closet(
-                            name: closetName,
-                            image: selectedImage!,
-                            products: List<Product>.from(selectedProducts),
-                          ),
-                        );
-                      });
-                      Navigator.of(context).pop();
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.greenAccent.withOpacity(0.8),
-                  ),
-                  child: const Text(
-                    'Create',
-                    style: TextStyle(color: Colors.black),
-                  ),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-    setState(() {}); // Refresh closets list
-  }
-
   Widget _buildMyPostsSection(BuildContext context) {
-    final List<String> postImages = [
-      'assets/images/demo1.jpg',
-      'assets/images/demo2.jpg',
-      'assets/images/demo3.jpg',
-      'assets/images/demo4.jpg',
-      'assets/images/demo5.jpg',
-      'assets/images/couple.jpg',
-    ];
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
       decoration: BoxDecoration(
@@ -482,7 +413,7 @@ class _ProfilePageState extends State<ProfilePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'My Posts',
+            'My Stories',
             style: TextStyle(
               color: Colors.white,
               fontSize: 20,
@@ -490,40 +421,85 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
           const SizedBox(height: 20),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
+          if (_loadingStories) const Center(child: CircularProgressIndicator()),
+          if (!_loadingStories && _storiesError != null)
+            Text(
+              _storiesError!,
+              style: const TextStyle(color: Colors.redAccent),
             ),
-            itemCount: postImages.length,
-            itemBuilder: (context, index) {
-              final imagePath = postImages[index];
-              return GestureDetector(
-                onTap: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => Dialog(
-                      backgroundColor: Colors.transparent,
-                      insetPadding: const EdgeInsets.all(10),
-                      child: GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
-                        child: InteractiveViewer(
-                          child: Image.asset(imagePath, fit: BoxFit.contain),
+          if (!_loadingStories && _storiesError == null && _myStories.isEmpty)
+            Text('No stories yet', style: TextStyle(color: Colors.white70)),
+          if (_myStories.isNotEmpty)
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              itemCount: _myStories.length,
+              itemBuilder: (context, index) {
+                final story = _myStories[index];
+                final url = (story['media_url'] as String?) ?? '';
+                final likeCount = story['like_count'] ?? 0;
+                final isNet = url.startsWith('http');
+                final img = isNet
+                    ? Image.network(
+                        url,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Image.asset(
+                          'assets/images/profile2.jpg',
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    : Image.asset(
+                        'assets/images/profile2.jpg',
+                        fit: BoxFit.cover,
+                      );
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
+                      child: img,
+                    ),
+                    Positioned(
+                      right: 4,
+                      bottom: 4,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.favorite,
+                              size: 14,
+                              color: Colors.redAccent,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              '$likeCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                  );
-                },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(15),
-                  child: Image.asset(imagePath, fit: BoxFit.cover),
-                ),
-              );
-            },
-          ),
+                  ],
+                );
+              },
+            ),
         ],
       ),
     );
@@ -580,7 +556,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
         ),
         const SizedBox(height: 10),
-        const Text('24.978 Followers', style: TextStyle(color: Colors.white70)),
+        // const Text('24.978 Followers', style: TextStyle(color: Colors.white70)),
         const SizedBox(height: 5),
         Text(
           _profileName,
@@ -602,7 +578,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   builder: (context) => const EditProfileFinal(),
                   barrierDismissible: false,
                 );
-                
+
                 // If edit was successful, reload profile
                 if (result == true) {
                   await _loadUserProfile();
@@ -638,35 +614,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ],
         ),
         const SizedBox(height: 20),
-        FittedBox(
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildTag('Coach'),
-              _buildTag('Architecture'),
-              _buildTag('Personal Growth'),
-            ],
-          ),
-        ),
       ],
-    );
-  }
-
-  Widget _buildTag(String label) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 5),
-      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.star, color: Colors.white, size: 16),
-          const SizedBox(width: 5),
-          Text(label, style: const TextStyle(color: Colors.white)),
-        ],
-      ),
     );
   }
 
@@ -689,10 +637,17 @@ class _ProfilePageState extends State<ProfilePage> {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildStatCard('Purchases', '2000TK'),
-                _buildStatCard('Age', '32 y.o'),
-                _buildStatCard('Likes', '25,899'),
-                _buildStatCard('Photos', '6'),
+                _buildStatCard(
+                  'Purchases',
+                  _purchaseCount == 0 ? '—' : _purchaseCount.toString(),
+                ),
+                _buildStatCard('Age', _age != null ? '${_age} y.o' : '—'),
+                _buildStatCard('Story Likes', _storyLikers.toString()),
+                _buildStatCard(
+                  'Spent',
+                  _purchaseTotal == 0 ? '—' : _purchaseTotal.toStringAsFixed(0),
+                ),
+                _buildStatCard('Stories', _myStories.length.toString()),
               ],
             ),
           ),

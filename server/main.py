@@ -2154,18 +2154,77 @@ def get_user_profile(user_id: str, authorization: str | None = Header(default=No
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        # Query by auth_id (not user_id)
         response = client.table("users").select(
             "*").eq("auth_id", user_id).execute()
-
         if getattr(response, "error", None):
             raise HTTPException(status_code=400, detail=str(response.error))
-
         users = response.data or []
         if not users:
             raise HTTPException(status_code=404, detail="User not found")
-
         user_data = users[0]
+
+        # Derive age from dob (YYYY-MM-DD portion)
+        dob_raw = user_data.get("dob")
+        if dob_raw:
+            try:
+                if isinstance(dob_raw, str):
+                    dpart = dob_raw[:10]
+                    y, m, d = [int(x) for x in dpart.split("-")]
+                    dob_dt = datetime(y, m, d)
+                else:  # date object
+                    dob_dt = dob_raw  # type: ignore
+                today = datetime.utcnow()
+                age = today.year - dob_dt.year - \
+                    ((today.month, today.day) < (dob_dt.month, dob_dt.day))
+                user_data["age"] = age
+            except Exception:
+                user_data["age"] = None
+        else:
+            user_data["age"] = None
+
+        # Story likes (distinct likers across user's stories)
+        try:
+            stories_res = client.table("stories").select(
+                "id").eq("user_auth_id", user_id).execute()
+            story_ids = [r.get("id")
+                         for r in (stories_res.data or []) if r.get("id")]
+            if story_ids:
+                likes_res = client.table("storyLike").select(
+                    "authId,storyId").in_("storyId", story_ids).execute()
+                if not getattr(likes_res, "error", None):
+                    distinct = {str(r.get("authId")) for r in (
+                        likes_res.data or []) if r.get("authId")}
+                    user_data["story_likes_total"] = len(distinct)
+                else:
+                    user_data["story_likes_total"] = 0
+            else:
+                user_data["story_likes_total"] = 0
+        except Exception:
+            user_data["story_likes_total"] = 0
+
+        # Purchase totals (sum of totals for completed/paid/delivered orders)
+        try:
+            orders_res = client.table("orders").select(
+                "id,total,status").eq("user_auth_id", user_id).execute()
+            total_amount = 0.0
+            count = 0
+            if not getattr(orders_res, "error", None):
+                for o in (orders_res.data or []):
+                    status_val = str(o.get("status") or "").lower()
+                    if status_val in {"completed", "paid", "delivered", "shipped"} or not status_val:
+                        try:
+                            amt = o.get("total")
+                            if amt is not None:
+                                total_amount += float(amt)
+                        except Exception:
+                            pass
+                        count += 1
+            user_data["purchase_total"] = round(total_amount, 2)
+            user_data["purchase_count"] = count
+        except Exception:
+            user_data["purchase_total"] = 0.0
+            user_data["purchase_count"] = 0
+
         return user_data
 
     except HTTPException:
@@ -2577,7 +2636,15 @@ def like_product(
     product_id: str,
     authorization: str | None = Header(default=None)
 ):
-    """Like a product and send notification to the product owner."""
+    """Like a product (idempotent) and send notification to the product owner.
+
+    Behavior:
+      - Requires auth
+      - If already liked by this user, returns ok with liked=True (no duplicate insert)
+      - Otherwise inserts a row into `like` table (product_id, auth_id)
+      - Sends notification to product owner (unless self-like)
+    Response: { ok: true, liked: true, message: str }
+    """
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(
             status_code=401, detail="Missing Authorization bearer token")
@@ -2592,45 +2659,178 @@ def like_product(
         raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
-        # Get product details
+        # 1) Validate product exists
         product_result = client.table("products").select(
             "id,name,auth_id"
-        ).eq("id", product_id).execute()
-
+        ).eq("id", product_id).limit(1).execute()
         if getattr(product_result, "error", None) or not product_result.data:
             raise HTTPException(status_code=404, detail="Product not found")
-
         product = product_result.data[0]
 
-        # Don't send notification if user likes their own product
-        if product["auth_id"] == user_id:
-            return {"ok": True, "message": "Product liked (no notification sent to self)"}
+        # 2) Check if already liked (idempotent)
+        existing = client.table("like").select("id").eq(
+            "product_id", product_id).eq("auth_id", user_id).limit(1).execute()
+        if getattr(existing, "error", None):
+            raise HTTPException(status_code=400, detail=str(existing.error))
+        if existing.data:
+            # Already liked – no duplicate insert
+            return {"ok": True, "liked": True, "message": "Already liked"}
 
-        # Get user details for the notification
-        user_result = client.table("users").select(
-            "name").eq("auth_id", user_id).execute()
-        user_name = "Someone"
-        if not getattr(user_result, "error", None) and user_result.data:
-            user_name = user_result.data[0].get("name", "Someone")
+        # 3) Insert like row
+        ins = client.table("like").insert({
+            "product_id": product_id,
+            "auth_id": user_id,
+        }).execute()
+        if getattr(ins, "error", None):
+            raise HTTPException(status_code=400, detail=str(ins.error))
 
-        # Create notification
-        create_notification(
-            recipient_auth_id=product["auth_id"],
-            notification_type="product_like",
-            title="Product Liked",
-            message=f"{user_name} liked your product \"{product['name']}\"",
-            sender_auth_id=user_id,
-            entity_type="product",
-            entity_id=product_id,
-            action_url=f"/products/{product_id}",
-            metadata={
-                "product_name": product["name"],
-                "sender_name": user_name
-            }
-        )
+        liked_self = (product.get("auth_id") == user_id)
+        if not liked_self:
+            # 4) Notification (best effort)
+            try:
+                user_result = client.table("users").select(
+                    "name").eq("auth_id", user_id).limit(1).execute()
+                user_name = "Someone"
+                if not getattr(user_result, "error", None) and user_result.data:
+                    user_name = user_result.data[0].get("name", "Someone")
+                create_notification(
+                    recipient_auth_id=product["auth_id"],
+                    notification_type="product_like",
+                    title="Product Liked",
+                    message=f"{user_name} liked your product \"{product['name']}\"",
+                    sender_auth_id=user_id,
+                    entity_type="product",
+                    entity_id=product_id,
+                    action_url=f"/products/{product_id}",
+                    metadata={
+                        "product_name": product["name"],
+                        "sender_name": user_name,
+                    }
+                )
+            except Exception as _notify_err:  # noqa: F841
+                pass
 
-        return {"ok": True, "message": "Product liked and notification sent"}
+        return {"ok": True, "liked": True, "message": "Product liked"}
 
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {e}")
+
+
+@app.delete("/products/{product_id}/like")
+def unlike_product(
+    product_id: str,
+    authorization: str | None = Header(default=None)
+):
+    """Remove like for a product by current user (idempotent).
+
+    Response: { ok: true, liked: false }
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        # Delete any existing rows
+        del_res = client.table("like").delete().eq(
+            "product_id", product_id).eq("auth_id", user_id).execute()
+        if getattr(del_res, "error", None):
+            raise HTTPException(status_code=400, detail=str(del_res.error))
+        return {"ok": True, "liked": False}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {e}")
+
+
+@app.get("/products/{product_id}/like/status")
+def like_status(
+    product_id: str,
+    authorization: str | None = Header(default=None)
+):
+    """Return whether current user has liked the product.
+
+    Response: { liked: bool }
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    try:
+        existing = client.table("like").select("id").eq(
+            "product_id", product_id).eq("auth_id", user_id).limit(1).execute()
+        if getattr(existing, "error", None):
+            raise HTTPException(status_code=400, detail=str(existing.error))
+        return {"liked": bool(existing.data)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {e}")
+
+
+@app.get("/liked-products")
+def get_liked_products(
+    authorization: str | None = Header(default=None)
+):
+    """Return products liked by the current user (with first image).
+
+    Response: { products: [ {<product fields + image_url>} ] }
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    try:
+        # Fetch liked product ids
+        like_res = client.table("like").select(
+            "product_id").eq("auth_id", user_id).execute()
+        if getattr(like_res, "error", None):
+            raise HTTPException(status_code=400, detail=str(like_res.error))
+        rows = like_res.data or []
+        ids = [r.get("product_id") for r in rows if r.get("product_id")]
+        if not ids:
+            return {"products": []}
+        prod_res = client.table("products").select(
+            "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
+        ).in_("id", ids).execute()
+        if getattr(prod_res, "error", None):
+            raise HTTPException(status_code=400, detail=str(prod_res.error))
+        products = prod_res.data or []
+        # Attach first image
+        img_res = client.table("product_images").select("product_id,image_url").in_(
+            "product_id", [p["id"] for p in products]).order("created_at", desc=False).execute()
+        if not getattr(img_res, "error", None):
+            first_by = {}
+            for row in (img_res.data or []):
+                pid = row.get("product_id")
+                if pid and pid not in first_by:
+                    first_by[pid] = row.get("image_url")
+            for p in products:
+                img = first_by.get(p.get("id"))
+                if img:
+                    p["image_url"] = img
+        return {"products": products}
     except HTTPException:
         raise
     except Exception as e:

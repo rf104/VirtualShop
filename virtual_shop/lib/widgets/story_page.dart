@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 
@@ -14,6 +13,8 @@ import 'package:virtual_shop/models/product.dart';
 import 'package:virtual_shop/pages/product_detail_page.dart';
 import 'package:virtual_shop/widgets/glass_container.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:virtual_shop/utils/story_like_service.dart';
+import 'package:virtual_shop/utils/cart_api.dart';
 
 // No product model needed in story media view
 
@@ -32,10 +33,16 @@ Future<List<Color>> _generatePalette(ImageProvider imageProvider) async {
 }
 
 class StoryMedia {
+  final String id;
   final String url;
   final String? caption;
   final String? productId;
-  const StoryMedia({required this.url, this.caption, this.productId});
+  const StoryMedia({
+    required this.id,
+    required this.url,
+    this.caption,
+    this.productId,
+  });
 }
 
 class Person {
@@ -64,6 +71,8 @@ class _StoryState extends State<Story> {
   bool _loading = true;
   String? _error;
   final Map<String, String> _productNames = {}; // product_id -> name
+  final Map<String, bool> _liked = {}; // story_id -> liked
+  final Set<String> _processingLike = {};
 
   int selectedPersonIndex = 0;
   int selectedStoryIndex = 0;
@@ -135,8 +144,10 @@ class _StoryState extends State<Story> {
           if (url.isEmpty) continue;
           final pid = s['product_id']?.toString();
           if (pid != null && pid.isNotEmpty) pids.add(pid);
+          final sid = s['id']?.toString() ?? '';
           mlist.add(
             StoryMedia(
+              id: sid,
               url: url,
               caption: s['caption']?.toString(),
               productId: pid,
@@ -191,11 +202,92 @@ class _StoryState extends State<Story> {
         _loading = false;
       });
       await _precachePalettes();
+      // Load like status for initial story
+      await _refreshLikeForCurrent();
     } catch (e) {
       setState(() {
         _error = e.toString();
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _refreshLikeForCurrent() async {
+    try {
+      if (people.isEmpty) return;
+      final s = people[selectedPersonIndex].stories[selectedStoryIndex];
+      if (s.id.isEmpty) return;
+      final resp = await StoryLikeService.status(s.id);
+      final liked = (resp['liked'] is bool) ? resp['liked'] as bool : false;
+      if (mounted) {
+        setState(() {
+          _liked[s.id] = liked;
+        });
+      }
+    } catch (_) {
+      // ignore status fetch errors
+    }
+  }
+
+  Future<void> _toggleLikeCurrent() async {
+    if (people.isEmpty) return;
+    final s = people[selectedPersonIndex].stories[selectedStoryIndex];
+    if (s.id.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot like: missing story id')),
+        );
+      }
+      return;
+    }
+    final sid = s.id;
+    if (_processingLike.contains(sid)) return;
+    _processingLike.add(sid);
+    try {
+      final currentlyLiked = _liked[sid] == true;
+      if (currentlyLiked) {
+        await StoryLikeService.unlike(sid);
+        if (mounted) setState(() => _liked[sid] = false);
+      } else {
+        await StoryLikeService.like(sid);
+        if (mounted) setState(() => _liked[sid] = true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to update like: $e')));
+      }
+    } finally {
+      _processingLike.remove(sid);
+    }
+  }
+
+  Future<void> _addCurrentToCart() async {
+    if (people.isEmpty) return;
+    final s = people[selectedPersonIndex].stories[selectedStoryIndex];
+    final pid = s.productId;
+    if (pid == null || pid.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No product linked to this story')),
+        );
+      }
+      return;
+    }
+    try {
+      await CartApi.addToCart(productId: pid, quantity: 1);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Added to cart')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Add to cart failed: $e')));
+      }
     }
   }
 
@@ -437,16 +529,28 @@ class _StoryState extends State<Story> {
                     specAngle: 0.0,
                     specStrength: 0.0,
                   ),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: const BoxDecoration(
-                      color: Colors.transparent,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.favorite_border,
-                      color: Colors.white,
-                      size: 28,
+                  child: GestureDetector(
+                    onTap: () async {
+                      await _toggleLikeCurrent();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: Colors.transparent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Builder(
+                        builder: (context) {
+                          final s = people[selectedPersonIndex]
+                              .stories[selectedStoryIndex];
+                          final liked = _liked[s.id] == true;
+                          return Icon(
+                            liked ? Icons.favorite : Icons.favorite_border,
+                            color: liked ? Colors.redAccent : Colors.white,
+                            size: 28,
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
@@ -482,7 +586,9 @@ class _StoryState extends State<Story> {
                     specStrength: 0.0,
                   ),
                   child: GestureDetector(
-                    onTap: () {},
+                    onTap: () async {
+                      await _addCurrentToCart();
+                    },
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: const BoxDecoration(
