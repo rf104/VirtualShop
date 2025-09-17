@@ -26,6 +26,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
 
   // Recent transactions state
   List<dynamic> _recentTransactions = [];
+  List<dynamic> _allTransactions = [];
   bool _txLoading = false;
   String? _txError;
   String? _sellerAuthId;
@@ -139,6 +140,7 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
         final body = json.decode(resp.body) as Map<String, dynamic>;
         final list = (body['transactions'] as List<dynamic>? ?? []);
         setState(() {
+          _allTransactions = list;
           _recentTransactions = list.take(2).toList();
           _txLoading = false;
         });
@@ -1447,68 +1449,150 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
     }
   }
 
-  String _getTotalEarnings() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "৳25,300";
-      case "Weekly":
-        return "৳1,47,200";
-      case "Monthly":
-        return "৳5,89,200";
-      default:
-        return "৳5,89,200";
-    }
-  }
+  String _formatCurrency(num v) => '৳${v.toStringAsFixed(0)}';
 
-  String _getPeriodText() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "Today";
-      case "Weekly":
-        return "This Week";
-      case "Monthly":
-        return "March";
-      default:
-        return "March";
-    }
+  // Replace hardcoded earnings with computed sums
+  String _getTotalEarnings() {
+    final r = _currentRange();
+    final sum = _sumForRange(r.start, r.end);
+    return _formatCurrency(sum);
   }
 
   String _getPeriodEarnings() {
-    switch (_selectedPeriod) {
-      case "Daily":
-        return "৳25,300";
-      case "Weekly":
-        return "৳1,47,200";
-      case "Monthly":
-        return "৳1,68,000";
-      default:
-        return "৳1,68,000";
-    }
+    final r = _currentRange();
+    final sum = _sumForRange(r.start, r.end);
+    return _formatCurrency(sum);
   }
 
   String _getEarningsChange() {
+    final cur = _currentRange();
+    final prev = _previousRange();
+    final curSum = _sumForRange(cur.start, cur.end);
+    final prevSum = _sumForRange(prev.start, prev.end);
+    final delta = curSum - prevSum;
+    final sign = delta >= 0 ? '+' : '-';
+    return '$sign ${_formatCurrency(delta.abs())}';
+  }
+
+  // Keep period text helper for UI labels
+  String _getPeriodText() {
     switch (_selectedPeriod) {
-      case "Daily":
-        return "+ ৳2,100";
-      case "Weekly":
-        return "+ ৳12,400";
-      case "Monthly":
-        return "+ ৳34,500";
+      case 'Daily':
+        return 'Today';
+      case 'Weekly':
+        return 'This Week';
+      case 'Monthly':
       default:
-        return "+ ৳34,500";
+        final now = DateTime.now();
+        final monthName = DateFormat('MMMM').format(now);
+        return monthName;
     }
   }
 
+  // Mini chart sample data (UI decoration)
   List<double> _getChartData() {
     switch (_selectedPeriod) {
-      case "Daily":
+      case 'Daily':
         return [8.0, 15.0, 12.0, 22.0, 18.0, 30.0];
-      case "Weekly":
+      case 'Weekly':
         return [15.0, 25.0, 20.0, 35.0, 28.0, 40.0];
-      case "Monthly":
-        return [12.0, 20.0, 16.0, 28.0, 10.0, 36.0];
+      case 'Monthly':
       default:
         return [12.0, 20.0, 16.0, 28.0, 10.0, 36.0];
+    }
+  }
+
+  ({DateTime start, DateTime end}) _currentRange() {
+    final now = DateTime.now();
+    switch (_selectedPeriod) {
+      case 'Daily':
+        final start = DateTime(now.year, now.month, now.day);
+        return (start: start, end: now);
+      case 'Weekly':
+        // Assumption: last 7 days including today
+        final sevenDaysAgo = now.subtract(const Duration(days: 6));
+        final start = DateTime(
+          sevenDaysAgo.year,
+          sevenDaysAgo.month,
+          sevenDaysAgo.day,
+        );
+        return (start: start, end: now);
+      case 'Monthly':
+      default:
+        final start = DateTime(now.year, now.month, 1);
+        return (start: start, end: now);
+    }
+  }
+
+  ({DateTime start, DateTime end}) _previousRange() {
+    final now = DateTime.now();
+    switch (_selectedPeriod) {
+      case 'Daily':
+        final todayStart = DateTime(now.year, now.month, now.day);
+        final yStart = todayStart.subtract(const Duration(days: 1));
+        final yEnd = todayStart.subtract(const Duration(microseconds: 1));
+        return (start: yStart, end: yEnd);
+      case 'Weekly':
+        final cur = _currentRange();
+        final prevEnd = cur.start.subtract(const Duration(microseconds: 1));
+        final prevStart = cur.start.subtract(const Duration(days: 7));
+        return (start: prevStart, end: prevEnd);
+      case 'Monthly':
+      default:
+        final firstThis = DateTime(now.year, now.month, 1);
+        final firstPrev = DateTime(firstThis.year, firstThis.month - 1, 1);
+        final endPrev = firstThis.subtract(const Duration(microseconds: 1));
+        return (start: firstPrev, end: endPrev);
+    }
+  }
+
+  double _amountForTx(Map<String, dynamic> tx) {
+    final raw = tx['seller_item_total'] ?? tx['amount'];
+    if (raw == null) return 0.0;
+    try {
+      return double.parse(raw.toString());
+    } catch (_) {
+      return 0.0;
+    }
+  }
+
+  DateTime? _txDate(Map<String, dynamic> tx) {
+    final s = (tx['paid_at'] ?? tx['created_at'])?.toString();
+    if (s == null || s.isEmpty) return null;
+    try {
+      return DateTime.parse(s).toLocal();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isSuccess(String? status) {
+    if (status == null) return false;
+    final s = status.toLowerCase();
+    return s == 'completed' || s == 'paid' || s == 'succeeded';
+  }
+
+  double _sumForRange(DateTime start, DateTime end) {
+    double total = 0.0;
+    for (final t in _allTransactions) {
+      if (t is! Map<String, dynamic>) continue;
+      if (!_isSuccess(t['payment_status']?.toString())) continue;
+      final dt = _txDate(t);
+      if (dt == null) continue;
+      if (!dt.isBefore(start) && !dt.isAfter(end)) {
+        total += _amountForTx(t);
+      }
+    }
+    return total;
+  }
+
+  String _formatReviewDate(dynamic raw) {
+    if (raw == null) return 'Unknown date';
+    try {
+      final dt = DateTime.parse(raw.toString());
+      return DateFormat('MMM d, yyyy').format(dt.toLocal());
+    } catch (_) {
+      return raw.toString();
     }
   }
 
@@ -1619,16 +1703,6 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
         ],
       ),
     );
-  }
-
-  String _formatReviewDate(dynamic raw) {
-    if (raw == null) return 'Unknown date';
-    try {
-      final dt = DateTime.parse(raw.toString());
-      return DateFormat('MMM d, yyyy').format(dt.toLocal());
-    } catch (_) {
-      return raw.toString();
-    }
   }
 
   Widget _buildReviewSkeleton() => Container(
