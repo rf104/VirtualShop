@@ -3,4 +3,3 @@
 venv/
 server/.env
 virtual_shop/.env
-server/__pycache__/*

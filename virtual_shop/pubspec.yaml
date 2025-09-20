@@ -88,6 +88,8 @@ dependencies:
   jwt_decoder: ^2.0.1
   model_viewer_plus: ^1.9.3
   file_picker: ^8.1.2
+  flutter_sound: ^9.28.0
+  flutter_image_compress: ^2.4.0
 
 dev_dependencies:
   flutter_test:

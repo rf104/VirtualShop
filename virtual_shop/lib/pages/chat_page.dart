@@ -76,7 +76,8 @@ class _ChatPageState extends State<ChatPage>
   // --- Streaming audio (model -> user) ---
   final AudioPlayer _player = AudioPlayer();
   dynamic _pcmToWav; // Instance returned by convertToWav()
-  final List<int> _pcmAccumulation = [];
+  ConcatenatingAudioSource? _concatSource;
+  StreamSubscription<List<int>>? _wavSub;
   // We assume 24kHz mono 16-bit PCM from inlineData mimeType audio/pcm;rate=24000
   static const int _modelPcmSampleRate = 24000;
   static const int _modelPcmChannels = 1;
@@ -154,6 +155,8 @@ class _ChatPageState extends State<ChatPage>
     _textController.dispose(); // Dispose of the text controller.
     _recordSub?.cancel(); // Cancel audio recorder subscription.
     _pcmToWav?.dispose();
+    _wavSub?.cancel();
+    _concatSource = null;
     _player.dispose();
     super.dispose();
   }
@@ -259,7 +262,7 @@ class _ChatPageState extends State<ChatPage>
       }
 
       final productInstruction = widget.product != null
-          ? '\n\n${_buildProductContext(widget.product!)}\n\nAlways in every message try to praise the product and push the product about its awesomeness, try to make the sell, When the user seems interested in this product, proactively highlight its key benefits, unique selling points, and offer complementary or related items. If user intent matches another category, you may generalize.'
+          ? '\n\n${_buildProductContext(widget.product!)}\n\nAlways in every message try to praise the product and push the product about its awesomeness, try to make the sell, When the user seems interested in this product, proactively highlight its key benefits, unique selling points, and offer complementary or related items. If user intent matches another category, you may generalize and improvised in such a way that suggest this is the right product.'
           : '';
       // Initiate the connection with specified parameters.
       final session = await _genAI.live.connect(
@@ -363,8 +366,8 @@ class _ChatPageState extends State<ChatPage>
 
     final textChunk = message.text;
     print('📥 Received message textchunk: $textChunk');
-    // Capture audio inline data if present (serverContent parts)
-    _ingestInlinePcm(message);
+    _ingestInlinePcm(message); // Handles audio progressively
+
     // If a text chunk is received, update the streaming message.
     if (textChunk != null) {
       setState(() {
@@ -391,85 +394,20 @@ class _ChatPageState extends State<ChatPage>
         }
         _isReplying = false; // Allow the user to send another message.
       });
-      // If we have accumulated PCM audio from model, convert & play
-      if (_pcmAccumulation.isNotEmpty) {
-        _finalizeAndPlayModelAudio();
-      }
-    }
-  }
+      // Flush any remaining PCM in the converter (if the package supports it)
+      _pcmToWav?.run(Uint8List(0));
 
-  Future<void> _finalizeAndPlayModelAudio() async {
-    try {
-      if (_pcmAccumulation.isEmpty) return;
+      // Wait briefly for any final chunks to play, then reset for next turn
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _wavSub?.cancel();
+        _wavSub = null;
+        _concatSource = null;
+        _pcmToWav =
+            null; // Assuming no dispose() needed; add if package requires
+        _player.stop(); // Optional: stop if you want to ensure cleanup
+      });
 
-      // Copy and clear early to avoid re-entry issues
-      final rawBytes = List<int>.from(_pcmAccumulation);
-      _pcmAccumulation.clear();
-
-      // Ensure even length for 16-bit samples (drop trailing byte if odd)
-      if (rawBytes.length.isOdd) {
-        rawBytes.removeLast();
-      }
-
-      Uint8List wavResult = Uint8List(0);
-
-      // Attempt using pcmtowave first
-      try {
-        _pcmToWav ??= convertToWav(
-          sampleRate: _modelPcmSampleRate,
-          converMiliSeconds: 1000,
-          numChannels: _modelPcmChannels,
-        );
-
-        final completer = Completer<Uint8List>();
-        late StreamSubscription sub;
-        sub = _pcmToWav.convert.listen((wavBytes) {
-          // wavBytes is List<int>; convert to Uint8List
-          if (!completer.isCompleted) {
-            completer.complete(Uint8List.fromList(List<int>.from(wavBytes)));
-          }
-        });
-
-        // Subscribe BEFORE feeding data to avoid race conditions.
-        const chunkSize = 4096;
-        for (int i = 0; i < rawBytes.length; i += chunkSize) {
-          final end = (i + chunkSize < rawBytes.length)
-              ? i + chunkSize
-              : rawBytes.length;
-          // Wrap in Uint8List for the converter API
-          _pcmToWav.run(Uint8List.fromList(rawBytes.sublist(i, end)));
-        }
-
-        wavResult = await completer.future.timeout(
-          const Duration(seconds: 3),
-          onTimeout: () => Uint8List(0),
-        );
-        await sub.cancel();
-      } catch (e) {
-        // Fall back to manual construction if converter path fails.
-        print(
-          'pcmtowave conversion failed, falling back to manual WAV build: $e',
-        );
-      }
-
-      // Fallback: build WAV manually if converter produced nothing
-      if (wavResult.isEmpty) {
-        wavResult = _buildWavFromPCM(
-          Uint8List.fromList(rawBytes),
-          sampleRate: _modelPcmSampleRate,
-          channels: _modelPcmChannels,
-          bitsPerSample: 16,
-        );
-      }
-
-      if (wavResult.isEmpty) return;
-
-      await _player.setAudioSource(
-        AudioSource.uri(Uri.dataFromBytes(wavResult, mimeType: 'audio/wav')),
-      );
-      await _player.play();
-    } catch (e) {
-      print('Failed to convert/play model audio: $e');
+      // If pcmtowave failed earlier (rare), fall back to manual (keep your _buildWavFromPCM if needed, but adapt to chunks)
     }
   }
 
@@ -539,7 +477,38 @@ class _ChatPageState extends State<ChatPage>
           if (mime.startsWith('audio/pcm')) {
             final dataB64 = inline.data;
             final bytes = base64Decode(dataB64);
-            _pcmAccumulation.addAll(bytes);
+            if (bytes.isNotEmpty) {
+              // Lazy-init the converter and player on first audio chunk
+              _pcmToWav ??= convertToWav(
+                sampleRate: _modelPcmSampleRate,
+                converMiliSeconds:
+                    500, // Reduced for lower latency; adjust as needed
+                numChannels: _modelPcmChannels,
+              );
+
+              if (_concatSource == null) {
+                _concatSource = ConcatenatingAudioSource(children: []);
+                _player.setAudioSource(_concatSource!);
+                _player
+                    .play(); // Start playback; it will wait for sources to be added
+              }
+
+              if (_wavSub == null) {
+                _wavSub = _pcmToWav.convert.listen((wavBytes) {
+                  // Add each WAV chunk as a playable source
+                  final chunkSource = AudioSource.uri(
+                    Uri.dataFromBytes(
+                      Uint8List.fromList(wavBytes),
+                      mimeType: 'audio/wav',
+                    ),
+                  );
+                  _concatSource?.add(chunkSource);
+                });
+              }
+
+              // Feed the PCM chunk directly for progressive conversion
+              _pcmToWav.run(Uint8List.fromList(bytes));
+            }
           }
         }
       }
@@ -956,6 +925,7 @@ class _ChatPageState extends State<ChatPage>
                               //   message: _streamingMessage!,
                               //   captionStyle: true,
                               // );
+                              return Text(_streamingMessage!.text);
                             }
                             final msgIndex = index - streamingCount;
                             final msg = assistantMessages.reversed

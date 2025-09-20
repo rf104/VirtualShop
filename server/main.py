@@ -1160,17 +1160,11 @@ def checkout(authorization: str | None = Header(default=None)):
             "payments": {"inserted": [], "skipped": skipped, "note": "no valid order ids returned"}
         }
 
-    # --- OPTION B: try to create a master (parent) order and attach payments to that master id ---
-    # This creates a single top-level order record (id = master_order_id) so all payments reference same order_id.
-    # If creation of the master order fails (schema/constraints/RLS), we fall back to Option A (per-shop payments).
     master_order_id = str(uuid.uuid4())
     master_order_payload = {
         "id": master_order_id,
-        # best-effort minimal fields; adjust according to your orders schema
         "created_at": now_iso,
-        # if your orders table does not have this column, insertion may fail
         "order_status": "grouped",
-        # optionally include totals for bookkeeping
         "total_amount": str(total_amount) if total_amount is not None else None
     }
 
