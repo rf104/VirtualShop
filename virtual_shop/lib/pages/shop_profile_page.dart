@@ -1,6 +1,13 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:convert';
+import 'dart:io' show Platform;
+
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
+import 'package:jwt_decoder/jwt_decoder.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:virtual_shop/utils/supabase_service.dart';
 
 import 'edit_shop_profile_page.dart';
@@ -23,6 +30,38 @@ class _ShopProfilePageState extends State<ShopProfilePage> {
   String? _website;
   ImageProvider? _avatarProvider;
 
+  // Stats state
+  int? _statProducts;
+  int? _statOrders;
+  int? _statCustomers;
+  double? _statRevenue;
+  String? _statsError;
+  bool _statsLoading = false;
+
+  String get _baseUrl {
+    final fromServer = dotenv.env['SERVER_URL']?.trim();
+    final fromBackend = dotenv.env['BACKEND_URL']?.trim();
+    String raw = (fromServer?.isNotEmpty == true)
+        ? fromServer!
+        : (fromBackend?.isNotEmpty == true
+              ? fromBackend!
+              : 'http://127.0.0.1:8000');
+    raw = raw.replaceFirst(RegExp(r'^(https?://)\s+'), r'$1');
+    String url = raw.endsWith('/') ? raw.substring(0, raw.length - 1) : raw;
+    try {
+      if (!mounted) return url;
+      // Map localhost to Android emulator/device IP if needed
+      if (!kIsWeb && Platform.isAndroid) {
+        final uri = Uri.parse(url);
+        if (uri.host == '127.0.0.1' || uri.host == 'localhost') {
+          final hostIp = dotenv.env['hostIp'] ?? '192.168.0.154';
+          url = uri.replace(host: hostIp).toString();
+        }
+      }
+    } catch (_) {}
+    return url;
+  }
+
   Map<String, String>? _headersForUrl(String url) {
     final session = Supabase.instance.client.auth.currentSession;
     if (session == null) return null;
@@ -36,6 +75,7 @@ class _ShopProfilePageState extends State<ShopProfilePage> {
   void initState() {
     super.initState();
     _loadShopData();
+    _loadStats();
   }
 
   Future<void> _loadShopData() async {
@@ -87,6 +127,107 @@ class _ShopProfilePageState extends State<ShopProfilePage> {
     } catch (_) {
       // leave defaults on error
     }
+  }
+
+  Future<void> _loadStats() async {
+    setState(() {
+      _statsLoading = true;
+      _statsError = null;
+    });
+
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      String? token = session?.accessToken;
+      String? sellerId;
+
+      if (token != null) {
+        try {
+          final decoded = JwtDecoder.decode(token);
+          sellerId = decoded['sub'] ?? decoded['user_id'] ?? decoded['uid'];
+        } catch (_) {}
+      }
+      sellerId ??= Supabase.instance.client.auth.currentUser?.id;
+
+      if (sellerId == null) {
+        setState(() {
+          _statsError = 'Not signed in';
+          _statsLoading = false;
+        });
+        return;
+      }
+
+      final base = _baseUrl;
+      final headers = <String, String>{'Content-Type': 'application/json'};
+      if (token != null && token.isNotEmpty)
+        headers['Authorization'] = 'Bearer $token';
+
+      // Fetch products
+      final productsResp = await http.get(
+        Uri.parse('$base/sellers/$sellerId/products'),
+        headers: headers,
+      );
+      if (productsResp.statusCode != 200) {
+        throw Exception('Products fetch failed: ${productsResp.statusCode}');
+      }
+      final productsData =
+          jsonDecode(productsResp.body) as Map<String, dynamic>;
+      final List products = (productsData['products'] as List?) ?? const [];
+
+      // Fetch transactions
+      final txnResp = await http.get(
+        Uri.parse('$base/sellers/$sellerId/transactions'),
+        headers: headers,
+      );
+      if (txnResp.statusCode != 200) {
+        throw Exception('Transactions fetch failed: ${txnResp.statusCode}');
+      }
+      final txnData = jsonDecode(txnResp.body) as Map<String, dynamic>;
+      final List txns = (txnData['transactions'] as List?) ?? const [];
+
+      // Compute metrics
+      final productCount = products.length;
+      final orderIds = <String>{};
+      final customerIds = <String>{};
+      double revenue = 0;
+
+      for (final t in txns) {
+        final map = t as Map<String, dynamic>;
+        final orderId = map['order_id']?.toString();
+        if (orderId != null) orderIds.add(orderId);
+        final buyerInfo = map['buyer_info'] as Map<String, dynamic>?;
+        final uid =
+            buyerInfo?['id']?.toString() ?? buyerInfo?['auth_id']?.toString();
+        if (uid != null) customerIds.add(uid);
+        final sellerTotal =
+            double.tryParse(map['seller_item_total']?.toString() ?? '0') ?? 0;
+        revenue += sellerTotal;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _statProducts = productCount;
+        _statOrders = orderIds.length;
+        _statCustomers = customerIds.length;
+        _statRevenue = revenue;
+        _statsLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _statsError = e.toString();
+        _statsLoading = false;
+      });
+    }
+  }
+
+  String _formatCompactCurrency(double? value) {
+    if (value == null) return '৳0';
+    if (value >= 1000000) {
+      return '৳${(value / 1000000).toStringAsFixed(1)}M';
+    } else if (value >= 1000) {
+      return '৳${(value / 1000).toStringAsFixed(1)}K';
+    }
+    return '৳${value.toStringAsFixed(0)}';
   }
 
   @override
@@ -322,34 +463,78 @@ class _ShopProfilePageState extends State<ShopProfilePage> {
                       ),
                     ),
                     SizedBox(height: isTablet ? 20 : 16),
-                    isDesktop || isTablet
-                        ? Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _buildShopStatItem("Products", "1,245", isTablet),
-                              _buildShopStatItem("Orders", "3,567", isTablet),
-                              _buildShopStatItem(
-                                "Customers",
-                                "2,134",
-                                isTablet,
-                              ),
-                              _buildShopStatItem("Revenue", "৳45.2K", isTablet),
-                            ],
-                          )
-                        : Wrap(
-                            alignment: WrapAlignment.spaceAround,
-                            runSpacing: 16,
-                            children: [
-                              _buildShopStatItem("Products", "1,245", isTablet),
-                              _buildShopStatItem("Orders", "3,567", isTablet),
-                              _buildShopStatItem(
-                                "Customers",
-                                "2,134",
-                                isTablet,
-                              ),
-                              _buildShopStatItem("Revenue", "৳45.2K", isTablet),
-                            ],
+                    if (_statsError != null)
+                      Text(
+                        _statsError!,
+                        style: const TextStyle(color: Colors.redAccent),
+                      ),
+                    if (_statsLoading)
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              color: const Color(0xff667eea),
+                              strokeWidth: 2,
+                            ),
                           ),
+                        ),
+                      ),
+                    if (!_statsLoading)
+                      (isDesktop || isTablet)
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                _buildShopStatItem(
+                                  "Products",
+                                  (_statProducts ?? 0).toString(),
+                                  isTablet,
+                                ),
+                                _buildShopStatItem(
+                                  "Orders",
+                                  (_statOrders ?? 0).toString(),
+                                  isTablet,
+                                ),
+                                _buildShopStatItem(
+                                  "Customers",
+                                  (_statCustomers ?? 0).toString(),
+                                  isTablet,
+                                ),
+                                _buildShopStatItem(
+                                  "Revenue",
+                                  _formatCompactCurrency(_statRevenue ?? 0),
+                                  isTablet,
+                                ),
+                              ],
+                            )
+                          : Wrap(
+                              alignment: WrapAlignment.spaceAround,
+                              runSpacing: 16,
+                              children: [
+                                _buildShopStatItem(
+                                  "Products",
+                                  (_statProducts ?? 0).toString(),
+                                  isTablet,
+                                ),
+                                _buildShopStatItem(
+                                  "Orders",
+                                  (_statOrders ?? 0).toString(),
+                                  isTablet,
+                                ),
+                                _buildShopStatItem(
+                                  "Customers",
+                                  (_statCustomers ?? 0).toString(),
+                                  isTablet,
+                                ),
+                                _buildShopStatItem(
+                                  "Revenue",
+                                  _formatCompactCurrency(_statRevenue ?? 0),
+                                  isTablet,
+                                ),
+                              ],
+                            ),
                   ],
                 ),
               ),
