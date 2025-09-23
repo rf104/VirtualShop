@@ -847,7 +847,7 @@ class _AddProductPageState extends State<AddProductPage> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xff667eea),
+            activeThumbColor: const Color(0xff667eea),
             activeTrackColor: const Color(0xff667eea).withOpacity(0.3),
           ),
         ],
@@ -1041,7 +1041,7 @@ class _AddProductPageState extends State<AddProductPage> {
         _isLoading = false;
       });
 
-      _showSuccessSnackBar('Product added successfully!');
+      _showSuccessSnackBar('Submitted! Waiting for admin approval.');
       Navigator.pop(context);
     }
   }

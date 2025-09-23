@@ -347,9 +347,11 @@ class _YourStoryItemState extends State<YourStoryItem> {
       final resp = await http.Response.fromStream(streamed);
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Story uploaded')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Story submitted. Pending admin approval.'),
+            ),
+          );
         }
         widget.onUploaded();
       } else {

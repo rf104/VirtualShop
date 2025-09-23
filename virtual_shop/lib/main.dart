@@ -4,6 +4,7 @@ import 'package:virtual_shop/pages/landing_page.dart';
 import 'package:virtual_shop/utils/expressive_theme.dart';
 import 'package:virtual_shop/widgets/auth_gate.dart';
 import 'package:virtual_shop/pages/complete_profile_page.dart';
+import 'package:virtual_shop/pages/admin_dashboard_page.dart';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -37,6 +38,7 @@ class MyApp extends StatelessWidget {
           final email = args != null ? args['email'] as String? : null;
           return CompleteProfilePage(email: email ?? '');
         },
+        '/admin': (context) => const AdminDashboardPage(),
       },
       home: const AuthGate(signedIn: HomePage(), signedOut: LandingPage()),
     );

@@ -315,7 +315,6 @@ class _FilterChip extends StatelessWidget {
     required this.label,
     required this.isSelected,
     required this.onTap,
-    super.key,
   });
 
   @override

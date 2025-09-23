@@ -6,6 +6,7 @@ import 'package:virtual_shop/pages/chat_assistant_page.dart';
 import 'package:virtual_shop/pages/NotificationPage.dart';
 import 'package:virtual_shop/pages/profile_page.dart';
 import 'package:virtual_shop/pages/seller_shell.dart';
+import 'package:virtual_shop/pages/admin_dashboard_page.dart';
 import 'package:virtual_shop/widgets/glass_container.dart';
 import 'package:virtual_shop/widgets/animated_tab_glass.dart';
 import 'package:virtual_shop/utils/supabase_service.dart';
@@ -22,6 +23,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   int _bottomNavIndex = 0;
   late TabController _tabController;
   String? _userType;
+  bool _isAdmin = false;
   bool _shouldAnimateGlass = false;
   int _cartItemCount = 0;
 
@@ -47,6 +49,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       if (!mounted) return;
       setState(() {
         _userType = (profile?['user_type'] as String?)?.trim();
+        final emailStr = (profile?['email'] as String?)?.trim().toLowerCase();
+        _isAdmin = emailStr == 'istiaqueahmedarik@gmail.com';
         final isSeller = _userType == 'Seller';
         if (isSeller && _bottomNavIndex == 6) {
           _bottomNavIndex = 7;
@@ -78,7 +82,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     bool isSelected = _bottomNavIndex == index;
     bool shouldAnimate = _shouldAnimateGlass && isSelected;
 
-    int lastTabIndex = (_userType ?? 'Normal User') == 'Seller' ? 7 : 6;
+    int lastTabIndex = 6;
+    if (_isAdmin) {
+      lastTabIndex = 7;
+    } else if ((_userType ?? 'Normal User') == 'Seller') {
+      lastTabIndex = 7;
+    }
 
     EdgeInsets extraPadding = EdgeInsets.zero;
     if (_bottomNavIndex == 0 && index == lastTabIndex) {
@@ -136,7 +145,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     bool shouldAnimate = _shouldAnimateGlass && isSelected;
 
     // Determine the last tab index based on user type
-    int lastTabIndex = (_userType ?? 'Normal User') == 'Seller' ? 7 : 6;
+    int lastTabIndex = 6;
+    if (_isAdmin) {
+      lastTabIndex = 7;
+    } else if ((_userType ?? 'Normal User') == 'Seller') {
+      lastTabIndex = 7;
+    }
 
     // Calculate padding based on selected tab
     EdgeInsets extraPadding = EdgeInsets.zero;
@@ -234,6 +248,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       case 6:
         return const ProfilePage(key: ValueKey('ProfilePage'));
       case 7:
+        if (_isAdmin)
+          return const AdminDashboardPage(key: ValueKey('AdminDashboard'));
         return const SellerShell(key: ValueKey('SellerShell'));
       default:
         return const Center(
@@ -272,7 +288,9 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     ),
                     _buildNavItem(Icons.bubble_chart, 4),
                     _buildNavItem(Icons.notifications, 5),
-                    if ((_userType ?? 'Normal User') != 'Seller')
+                    if (_isAdmin)
+                      _buildNavItem(Icons.shield, 7)
+                    else if ((_userType ?? 'Normal User') != 'Seller')
                       _buildNavItem(Icons.person_outline, 6)
                     else
                       _buildNavItem(Icons.store, 7),

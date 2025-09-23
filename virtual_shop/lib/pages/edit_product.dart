@@ -817,7 +817,7 @@ class _EditProductPageState extends State<EditProductPage> {
           Switch(
             value: value,
             onChanged: onChanged,
-            activeColor: const Color(0xFFADFF2F),
+            activeThumbColor: const Color(0xFFADFF2F),
             activeTrackColor: const Color(0xFFADFF2F).withOpacity(0.3),
           ),
         ],

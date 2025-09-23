@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:virtual_shop/pages/all_product_page.dart';
 
 class CategoriesWidget extends StatelessWidget {
   const CategoriesWidget({super.key});
@@ -44,27 +45,67 @@ class CategoriesWidget extends StatelessWidget {
             itemCount: categories.length,
             itemBuilder: (context, index) {
               final category = categories[index];
-              return Container(
-                decoration: BoxDecoration(
-                  color: Colors.grey[800],
-                  borderRadius: BorderRadius.circular(15.0),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    category['icon'] is String
-                        ? Image.asset(category['icon'], height: 40, width: 40)
-                        : Icon(category['icon'], size: 40, color: Colors.white),
-                    const SizedBox(height: 8),
-                    Text(
-                      category['name'],
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white,
-                      ),
+              return InkWell(
+                borderRadius: BorderRadius.circular(15.0),
+                onTap: () {
+                  final String name = (category['name'] as String)
+                      .toLowerCase();
+                  String? mapped;
+                  // Map display names to search/category tokens used in ProductCategory
+                  switch (name) {
+                    case 'clothes':
+                      mapped = 'fashion';
+                      break;
+                    case 'shoes':
+                      mapped = 'fashion';
+                      break;
+                    case 'eye glass':
+                    case 'eyeglass':
+                    case 'glasses':
+                      mapped = 'fashion';
+                      break;
+                    case 'laptop':
+                      mapped = 'electronics';
+                      break;
+                    case 'speakers':
+                      mapped = 'electronics';
+                      break;
+                    default:
+                      mapped = null; // falls back to all products
+                  }
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AllProductPage(initialCategory: mapped),
                     ),
-                  ],
+                  );
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.grey[800],
+                    borderRadius: BorderRadius.circular(15.0),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      category['icon'] is String
+                          ? Image.asset(category['icon'], height: 40, width: 40)
+                          : Icon(
+                              category['icon'],
+                              size: 40,
+                              color: Colors.white,
+                            ),
+                      const SizedBox(height: 8),
+                      Text(
+                        category['name'],
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               );
             },

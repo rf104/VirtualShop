@@ -145,10 +145,7 @@ class _AllReviewPageState extends State<AllReviewPage> {
       debugPrint('REVIEWS DEBUG: Status ${resp.statusCode}');
       debugPrint('REVIEWS DEBUG: Body length ${resp.body.length}');
       debugPrint(
-        'REVIEWS DEBUG: Raw body (first 400 chars): ' +
-            (resp.body.length > 400
-                ? resp.body.substring(0, 400) + '...'
-                : resp.body),
+        'REVIEWS DEBUG: Raw body (first 400 chars): ${resp.body.length > 400 ? resp.body.substring(0, 400) + '...' : resp.body}',
       );
       if (resp.statusCode == 200) {
         Map<String, dynamic> data;

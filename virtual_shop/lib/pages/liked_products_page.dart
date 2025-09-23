@@ -29,20 +29,23 @@ class _LikedProductsPageState extends State<LikedProductsPage> {
     });
     try {
       final items = await LikeService.fetchLikedProducts();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _products = items;
         });
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _error = e.toString();
         });
+      }
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loading = false;
         });
+      }
     }
   }
 

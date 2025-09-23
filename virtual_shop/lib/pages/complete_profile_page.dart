@@ -182,7 +182,7 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _gender.isEmpty ? null : _gender,
+                  initialValue: _gender.isEmpty ? null : _gender,
                   items: const [
                     DropdownMenuItem(value: 'Male', child: Text('Male')),
                     DropdownMenuItem(value: 'Female', child: Text('Female')),
@@ -207,7 +207,7 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _userType,
+                  initialValue: _userType,
                   items: const [
                     DropdownMenuItem(
                       value: 'Normal User',

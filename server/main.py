@@ -385,7 +385,8 @@ def list_products():
     # Note: PostgREST doesn't do arbitrary joins; we rely on a view or nested select
     # Here we select products and then fetch first image per product in a second query
     prod_res = client.table("products").select(
-        "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating").execute()
+        "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
+    ).eq("approval_status", "approved").execute()
     if getattr(prod_res, "error", None):
         raise HTTPException(status_code=400, detail=str(prod_res.error))
     prods = prod_res.data or []
@@ -414,7 +415,7 @@ def get_products_by_ids(ids: str):
         return []
     res = client.table("products").select(
         "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at"
-    ).in_("id", raw).execute()
+    ).in_("id", raw).eq("approval_status", "approved").execute()
     if getattr(res, "error", None):
         raise HTTPException(status_code=400, detail=str(res.error))
     prods = res.data or []
@@ -504,7 +505,7 @@ def search_products(q: str, limit: int = 24):
 
     prod_res = client.table("products").select(
         "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
-    ).in_("id", top_ids).execute()
+    ).in_("id", top_ids).eq("approval_status", "approved").execute()
     if getattr(prod_res, "error", None):
         raise HTTPException(status_code=400, detail=str(prod_res.error))
     prods = prod_res.data or []
@@ -530,7 +531,7 @@ def get_product(product_id: uuid.UUID):
     if client is None:
         raise HTTPException(status_code=500, detail="Supabase not configured")
     res = client.table("products").select(
-        "id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at"
+        "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,approval_status"
     ).eq("id", str(product_id)).limit(1).execute()
     if getattr(res, "error", None):
         raise HTTPException(status_code=400, detail=str(res.error))
@@ -538,6 +539,9 @@ def get_product(product_id: uuid.UUID):
     if not rows:
         raise HTTPException(status_code=404, detail="Product not found")
     p = rows[0]
+    # Hide unapproved products from public
+    if str(p.get("approval_status")) != "approved":
+        raise HTTPException(status_code=404, detail="Product not found")
     img_res = client.table("product_images").select("image_url").eq(
         "product_id", str(product_id)).order("created_at", desc=False).limit(1).execute()
     if not getattr(img_res, "error", None) and img_res.data:
@@ -742,6 +746,41 @@ def _get_user_from_authorization(authorization: str | None) -> str | None:
             pass
     # Fallback to insecure local decode
     return _decode_jwt_sub(authorization)
+
+
+def _get_user_email(client, auth_id: str) -> str | None:
+    try:
+        res = client.table("users").select("email").eq(
+            "auth_id", auth_id).limit(1).execute()
+        if not getattr(res, "error", None) and res.data:
+            email = res.data[0].get("email")
+            if isinstance(email, str) and email:
+                return email.strip().lower()
+    except Exception:
+        pass
+    return None
+
+
+def _is_admin_user(auth_id: str) -> bool:
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        return False
+    ADMIN_EMAIL = "istiaqueahmedarik@gmail.com".strip().lower()
+    try:
+        res = client.table("users").select("email,is_admin").eq(
+            "auth_id", auth_id).limit(1).execute()
+        if not getattr(res, "error", None) and res.data:
+            row = res.data[0]
+            if bool(row.get("is_admin")):
+                return True
+            email = (row.get("email") or "").strip().lower()
+            if email == ADMIN_EMAIL:
+                return True
+    except Exception:
+        email = _get_user_email(client, auth_id)
+        if email == ADMIN_EMAIL:
+            return True
+    return False
 
 
 def _ensure_bucket(client, bucket: str) -> None:
@@ -1450,8 +1489,8 @@ def list_stories(limit: int = 50):
     # Fetch recent stories; we don't filter by expires_at to avoid server-side timestamp formatting issues.
     # Client/UI can ignore expired if necessary; most importantly, we provide a stable feed.
     q = client.table("stories").select(
-        "id,user_auth_id,product_id,media_url,caption,created_at,expires_at"
-    ).order("created_at", desc=True).limit(max(1, int(limit)))
+        "id,user_auth_id,product_id,media_url,caption,created_at,expires_at,approval_status"
+    ).eq("approval_status", "approved").order("created_at", desc=True).limit(max(1, int(limit)))
     res = q.execute()
     if getattr(res, "error", None):
         raise HTTPException(status_code=400, detail=str(res.error))
@@ -1582,6 +1621,7 @@ async def create_story(
         "media_url": media_url,
         "caption": (caption or "").strip(),
         "expires_at": expires_at.isoformat(),
+        "approval_status": "pending",
     }
     ins = client.table("stories").insert(row).execute()
     if getattr(ins, "error", None):
@@ -1882,7 +1922,7 @@ def related_products(product_id: str, limit: int = 6):
     # 4) Fetch product rows in a single query
     prod_res = client.table("products").select(
         "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
-    ).in_("id", top_ids).execute()
+    ).in_("id", top_ids).eq("approval_status", "approved").execute()
     if getattr(prod_res, "error", None):
         raise HTTPException(status_code=400, detail=str(prod_res.error))
     prods = prod_res.data or []
@@ -1948,6 +1988,7 @@ async def create_product(
         "dimensions": dimensions,
         "is_featured": is_featured,
         "is_in_stock": is_in_stock,
+        "approval_status": "pending",
     }
     # In supabase-py v2, insert() does not support chaining .select().single().
     # It returns the inserted row(s) by default (representation), typically as a list.
@@ -2623,7 +2664,360 @@ def create_notification(
         raise Exception(f"Failed to create notification: {e}")
 
 
+# ---------------------- ADMIN MODERATION API ----------------------
+
+@app.get("/admin/me")
+def admin_me(authorization: str | None = Header(default=None)):
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+    return {"auth_id": user_id, "is_admin": _is_admin_user(user_id)}
+
+
+def _require_admin(authorization: str | None) -> str:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401, detail="Missing Authorization bearer token")
+    user_id = _get_user_from_authorization(authorization)
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization token")
+    if not _is_admin_user(user_id):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user_id
+
+
+@app.get("/admin/moderation/products")
+def moderation_products(status: str = "pending", limit: int = 50, authorization: str | None = Header(default=None)):
+    _require_admin(authorization)
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    q = client.table("products").select(
+        "id,auth_id,name,description,category,brand,price,stock,condition,created_at,approval_status"
+    )
+    if status and status != "all":
+        q = q.eq("approval_status", status)
+    q = q.order("created_at", desc=True).limit(max(1, int(limit)))
+    res = q.execute()
+    if getattr(res, "error", None):
+        raise HTTPException(status_code=400, detail=str(res.error))
+    products = res.data or []
+    ids = [p["id"] for p in products if p.get("id")]
+    if ids:
+        imgs = client.table("product_images").select("product_id,image_url").in_(
+            "product_id", ids).order("created_at", desc=False).execute()
+        first_by = {}
+        if not getattr(imgs, "error", None):
+            for row in (imgs.data or []):
+                pid = row.get("product_id")
+                if pid and pid not in first_by:
+                    first_by[pid] = row.get("image_url")
+        auth_ids = list({p.get("auth_id")
+                        for p in products if p.get("auth_id")})
+        emails = {}
+        if auth_ids:
+            ures = client.table("users").select(
+                "auth_id,email,name").in_("auth_id", auth_ids).execute()
+            if not getattr(ures, "error", None):
+                for u in (ures.data or []):
+                    emails[str(u.get("auth_id"))] = {
+                        "email": u.get("email"), "name": u.get("name")}
+        for p in products:
+            img = first_by.get(p.get("id"))
+            if img:
+                p["image_url"] = img
+            info = emails.get(str(p.get("auth_id"))) or {}
+            p["uploader"] = info
+    return {"items": products}
+
+
+@app.get("/admin/moderation/products/{product_id}/comments")
+def get_product_moderation_comments(product_id: str, authorization: str | None = Header(default=None)):
+    """List admin moderation comments for a product (admin only).
+
+    Returns: { comments: [ {id, message, visibility, created_at, admin_auth_id, admin: {name, profile_image}} ] }
+    """
+    _require_admin(authorization)
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    # Fetch comments for this product
+    res = client.table("moderation_comments").select(
+        "id,entity_type,entity_id,admin_auth_id,message,visibility,created_at"
+    ).eq("entity_type", "product").eq("entity_id", product_id).order("created_at", desc=False).execute()
+    if getattr(res, "error", None):
+        raise HTTPException(status_code=400, detail=str(res.error))
+    comments = res.data or []
+
+    # Attach admin basic profile
+    admin_ids = list({c.get("admin_auth_id")
+                     for c in comments if c.get("admin_auth_id")})
+    by_admin: dict[str, dict] = {}
+    if admin_ids:
+        ures = client.table("users").select(
+            "auth_id,name,profile_image").in_("auth_id", admin_ids).execute()
+        if not getattr(ures, "error", None):
+            for u in (ures.data or []):
+                aid = u.get("auth_id")
+                if aid:
+                    by_admin[str(aid)] = {
+                        "name": u.get("name") or "",
+                        "profile_image": u.get("profile_image") or "",
+                    }
+
+    for c in comments:
+        c["admin"] = by_admin.get(str(c.get("admin_auth_id")) or "")
+
+    return {"comments": comments}
+
+
+@app.post("/admin/moderation/products/{product_id}/comments")
+def add_product_moderation_comment(product_id: str, payload: dict, authorization: str | None = Header(default=None)):
+    """Add an admin moderation comment to a product.
+
+    Body: { message: string, visibility?: 'uploader'|'internal' }
+    - visibility 'uploader' sends a notification to the product owner.
+    """
+    admin_id = _require_admin(authorization)
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    message = (payload.get("message") or "").strip(
+    ) if isinstance(payload, dict) else ""
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    visibility = (payload.get("visibility") or "uploader").strip().lower()
+    if visibility not in ("uploader", "internal"):
+        visibility = "uploader"
+
+    # Ensure product exists and get owner
+    pres = client.table("products").select("id,auth_id,name").eq(
+        "id", product_id).limit(1).execute()
+    if getattr(pres, "error", None) or not pres.data:
+        raise HTTPException(status_code=404, detail="Product not found")
+    product = pres.data[0]
+
+    row = {
+        "entity_type": "product",
+        "entity_id": product_id,
+        "admin_auth_id": admin_id,
+        "message": message,
+        "visibility": visibility,
+    }
+    ins = client.table("moderation_comments").insert(row).execute()
+    if getattr(ins, "error", None):
+        raise HTTPException(status_code=400, detail=str(ins.error))
+
+    # Notify product owner if public to uploader and not self
+    try:
+        owner = product.get("auth_id")
+        pname = product.get("name")
+        if visibility == "uploader" and owner and str(owner) != str(admin_id):
+            create_notification(
+                recipient_auth_id=owner,
+                notification_type="moderation_comment",
+                title="Moderator Feedback",
+                message=f"You have a new moderation comment on '{pname}'",
+                sender_auth_id=admin_id,
+                entity_type="product",
+                entity_id=product_id,
+                action_url=f"/products/{product_id}",
+                metadata={"product_name": pname},
+            )
+    except Exception:
+        pass
+
+    created = ins.data[0] if isinstance(
+        ins.data, list) and ins.data else ins.data
+    return {"ok": True, "comment": created}
+
+
+@app.post("/admin/moderation/products/{product_id}/approve")
+def approve_product(product_id: str, authorization: str | None = Header(default=None)):
+    admin_id = _require_admin(authorization)
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    upd = client.table("products").update({
+        "approval_status": "approved",
+        "approved_by": admin_id,
+        "approved_at": datetime.utcnow().isoformat() + "Z",
+        "rejected_reason": None,
+    }).eq("id", product_id).execute()
+    if getattr(upd, "error", None):
+        raise HTTPException(status_code=400, detail=str(upd.error))
+    try:
+        pres = client.table("products").select("auth_id,name").eq(
+            "id", product_id).limit(1).execute()
+        if not getattr(pres, "error", None) and pres.data:
+            owner = pres.data[0].get("auth_id")
+            pname = pres.data[0].get("name")
+            if owner:
+                create_notification(
+                    recipient_auth_id=owner,
+                    notification_type="product_approved",
+                    title="Product Approved",
+                    message=f"Your product '{pname}' was approved",
+                    entity_type="product",
+                    entity_id=product_id,
+                )
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@app.post("/admin/moderation/products/{product_id}/reject")
+def reject_product(product_id: str, payload: dict, authorization: str | None = Header(default=None)):
+    admin_id = _require_admin(authorization)
+    reason = (payload.get("reason") or "").strip(
+    ) if isinstance(payload, dict) else ""
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    upd = client.table("products").update({
+        "approval_status": "rejected",
+        "approved_by": admin_id,
+        "approved_at": datetime.utcnow().isoformat() + "Z",
+        "rejected_reason": reason,
+    }).eq("id", product_id).execute()
+    if getattr(upd, "error", None):
+        raise HTTPException(status_code=400, detail=str(upd.error))
+    try:
+        pres = client.table("products").select("auth_id,name").eq(
+            "id", product_id).limit(1).execute()
+        if not getattr(pres, "error", None) and pres.data:
+            owner = pres.data[0].get("auth_id")
+            pname = pres.data[0].get("name")
+            if owner:
+                create_notification(
+                    recipient_auth_id=owner,
+                    notification_type="product_rejected",
+                    title="Product Rejected",
+                    message=(
+                        f"Your product '{pname}' was rejected" + (f": {reason}" if reason else "")),
+                    entity_type="product",
+                    entity_id=product_id,
+                )
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@app.get("/admin/moderation/stories")
+def moderation_stories(status: str = "pending", limit: int = 50, authorization: str | None = Header(default=None)):
+    _require_admin(authorization)
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    q = client.table("stories").select(
+        "id,user_auth_id,product_id,media_url,caption,created_at,approval_status"
+    )
+    if status and status != "all":
+        q = q.eq("approval_status", status)
+    q = q.order("created_at", desc=True).limit(max(1, int(limit)))
+    res = q.execute()
+    if getattr(res, "error", None):
+        raise HTTPException(status_code=400, detail=str(res.error))
+    stories = res.data or []
+    auth_ids = list({s.get("user_auth_id")
+                    for s in stories if s.get("user_auth_id")})
+    info = {}
+    if auth_ids:
+        ures = client.table("users").select(
+            "auth_id,email,name,profile_image").in_("auth_id", auth_ids).execute()
+        if not getattr(ures, "error", None):
+            for u in (ures.data or []):
+                info[str(u.get("auth_id"))] = {
+                    "email": u.get("email"),
+                    "name": u.get("name"),
+                    "profile_image": u.get("profile_image"),
+                }
+    for s in stories:
+        s["uploader"] = info.get(str(s.get("user_auth_id")))
+    return {"items": stories}
+
+
+@app.post("/admin/moderation/stories/{story_id}/approve")
+def approve_story(story_id: str, authorization: str | None = Header(default=None)):
+    admin_id = _require_admin(authorization)
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    upd = client.table("stories").update({
+        "approval_status": "approved",
+        "approved_by": admin_id,
+        "approved_at": datetime.utcnow().isoformat() + "Z",
+        "rejected_reason": None,
+    }).eq("id", story_id).execute()
+    if getattr(upd, "error", None):
+        raise HTTPException(status_code=400, detail=str(upd.error))
+    try:
+        sres = client.table("stories").select(
+            "user_auth_id,caption").eq("id", story_id).limit(1).execute()
+        if not getattr(sres, "error", None) and sres.data:
+            owner = sres.data[0].get("user_auth_id")
+            cap = sres.data[0].get("caption")
+            if owner:
+                create_notification(
+                    recipient_auth_id=owner,
+                    notification_type="story_approved",
+                    title="Story Approved",
+                    message=f"Your story was approved",
+                    entity_type="story",
+                    entity_id=story_id,
+                    metadata={"caption": cap},
+                )
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@app.post("/admin/moderation/stories/{story_id}/reject")
+def reject_story(story_id: str, payload: dict, authorization: str | None = Header(default=None)):
+    admin_id = _require_admin(authorization)
+    reason = (payload.get("reason") or "").strip(
+    ) if isinstance(payload, dict) else ""
+    client = getattr(app.state, "supabase", None)
+    if client is None:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+    upd = client.table("stories").update({
+        "approval_status": "rejected",
+        "approved_by": admin_id,
+        "approved_at": datetime.utcnow().isoformat() + "Z",
+        "rejected_reason": reason,
+    }).eq("id", story_id).execute()
+    if getattr(upd, "error", None):
+        raise HTTPException(status_code=400, detail=str(upd.error))
+    try:
+        sres = client.table("stories").select(
+            "user_auth_id,caption").eq("id", story_id).limit(1).execute()
+        if not getattr(sres, "error", None) and sres.data:
+            owner = sres.data[0].get("user_auth_id")
+            cap = sres.data[0].get("caption")
+            if owner:
+                create_notification(
+                    recipient_auth_id=owner,
+                    notification_type="story_rejected",
+                    title="Story Rejected",
+                    message=("Your story was rejected" +
+                             (f": {reason}" if reason else "")),
+                    entity_type="story",
+                    entity_id=story_id,
+                    metadata={"caption": cap, "reason": reason},
+                )
+    except Exception:
+        pass
+    return {"ok": True}
+
 # ---------------------- NOTIFICATION TRIGGERS ----------------------
+
 
 @app.post("/products/{product_id}/like")
 def like_product(
@@ -2807,7 +3201,7 @@ def get_liked_products(
             return {"products": []}
         prod_res = client.table("products").select(
             "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
-        ).in_("id", ids).execute()
+        ).in_("id", ids).eq("approval_status", "approved").execute()
         if getattr(prod_res, "error", None):
             raise HTTPException(status_code=400, detail=str(prod_res.error))
         products = prod_res.data or []

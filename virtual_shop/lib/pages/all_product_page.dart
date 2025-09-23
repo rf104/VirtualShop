@@ -7,7 +7,8 @@ import 'package:virtual_shop/pages/product_detail_page.dart';
 import 'package:virtual_shop/utils/product_repository.dart';
 
 class AllProductPage extends StatefulWidget {
-  const AllProductPage({super.key});
+  final String? initialCategory;
+  const AllProductPage({super.key, this.initialCategory});
 
   @override
   State<AllProductPage> createState() => _AllProductPageState();
@@ -25,6 +26,7 @@ class _AllProductPageState extends State<AllProductPage> {
   String? _searchError;
   List<Product> _vectorResults = const [];
   String _sort = 'relevance'; // relevance | price_asc | price_desc
+  String? _categoryFilter; // optional category filter from landing/categories
 
   // Cached vocab for suggestions
   Set<String> _knownCategories = {};
@@ -56,6 +58,7 @@ class _AllProductPageState extends State<AllProductPage> {
   @override
   void initState() {
     super.initState();
+    _categoryFilter = widget.initialCategory?.toLowerCase();
     _fetchProducts();
   }
 
@@ -350,7 +353,19 @@ class _AllProductPageState extends State<AllProductPage> {
       return _buildGrid(results);
     }
 
-    final filtered = _applySorting(_products);
+    // Apply optional category filter when no query
+    List<Product> base = _products;
+    if (_categoryFilter != null && _categoryFilter!.isNotEmpty) {
+      base = base
+          .where(
+            (p) =>
+                p.category.toString().split('.').last.toLowerCase() ==
+                _categoryFilter,
+          )
+          .toList();
+    }
+
+    final filtered = _applySorting(base);
     return _buildGrid(filtered);
   }
 

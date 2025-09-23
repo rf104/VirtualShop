@@ -141,20 +141,23 @@ class _ProfilePageState extends State<ProfilePage> {
     });
     try {
       final stories = await StoryLikeService.userStories(userAuthId, limit: 24);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _myStories = stories;
         });
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _storiesError = e.toString();
         });
+      }
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loadingStories = false;
         });
+      }
     }
   }
 
@@ -258,20 +261,23 @@ class _ProfilePageState extends State<ProfilePage> {
     });
     try {
       final items = await LikeService.fetchLikedProducts();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _likedPreview = items.take(10).toList();
         });
+      }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _likedError = e.toString();
         });
+      }
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loadingLikes = false;
         });
+      }
     }
   }
 
@@ -641,7 +647,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   'Purchases',
                   _purchaseCount == 0 ? '—' : _purchaseCount.toString(),
                 ),
-                _buildStatCard('Age', _age != null ? '${_age} y.o' : '—'),
+                _buildStatCard('Age', _age != null ? '$_age y.o' : '—'),
                 _buildStatCard('Story Likes', _storyLikers.toString()),
                 _buildStatCard(
                   'Spent',

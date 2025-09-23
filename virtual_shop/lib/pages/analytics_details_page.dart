@@ -108,8 +108,9 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
       final uri = Uri.parse('$_baseUrl/sellers/$sellerId/transactions');
       final headers = <String, String>{'Content-Type': 'application/json'};
       final session = Supabase.instance.client.auth.currentSession;
-      if (session != null)
+      if (session != null) {
         headers['Authorization'] = 'Bearer ${session.accessToken}';
+      }
 
       final resp = await http
           .get(uri, headers: headers)
@@ -128,12 +129,12 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
     } on TimeoutException catch (_) {
       setState(
         () => _error =
-            'Request timed out. Check server at ${_baseUrl} and network.',
+            'Request timed out. Check server at $_baseUrl and network.',
       );
     } on SocketException catch (e) {
       setState(
         () => _error =
-            'Network error: ${e.osError?.message ?? e.message}. Host ${_baseUrl}',
+            'Network error: ${e.osError?.message ?? e.message}. Host $_baseUrl',
       );
     } catch (e) {
       setState(() => _error = 'Failed to fetch transactions: $e');
@@ -164,8 +165,7 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
           ),
         ),
         iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          _buildPeriodMenu(isTablet)],
+        actions: [_buildPeriodMenu(isTablet)],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -636,7 +636,7 @@ class _AnalyticsDetailsPageState extends State<AnalyticsDetailsPage> {
                     ),
                   ],
                 ),
-              )
+              ),
             ],
           ),
           SizedBox(height: isTablet ? 16 : 12),

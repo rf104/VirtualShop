@@ -33,8 +33,9 @@ class _VirtualTryOnImagePickerState extends State<VirtualTryOnImagePicker> {
       false; // reentrancy guard to avoid multiple simultaneous camera acquisitions
 
   Future<void> _pickAndEditImage(ImageSource source) async {
-    if (_picking)
+    if (_picking) {
       return; // prevent double taps opening multiple camera sessions
+    }
     _picking = true;
     try {
       final XFile? pickedFile = await _picker.pickImage(
@@ -287,8 +288,9 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
 
       // Ensure remote URLs (upload to Supabase if local asset)
       Future<String> ensureRemoteUrl(String name, Uint8List bytes) async {
-        if (name.startsWith('http://') || name.startsWith('https://'))
+        if (name.startsWith('http://') || name.startsWith('https://')) {
           return name;
+        }
         return await SupabaseService.uploadProfileImageBytes(
           bytes: bytes,
           filename: name.split('/').isNotEmpty
@@ -978,7 +980,7 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
         }
         // More robust parsing: accept image/png and image/jpeg, and both inlineData/inline_data keys.
         String? imageBase64;
-        String? _extractImageB64FromParts(dynamic parts) {
+        String? extractImageB64FromParts(dynamic parts) {
           for (final part in parts) {
             final inline = part['inlineData'] ?? part['inline_data'];
             if (inline != null) {
@@ -1001,7 +1003,7 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
               final candidates = jsonLine['candidates'] ?? [];
               for (final candidate in candidates) {
                 final parts = candidate['content']?['parts'] ?? [];
-                imageBase64 = _extractImageB64FromParts(parts);
+                imageBase64 = extractImageB64FromParts(parts);
                 if (imageBase64 != null) break;
               }
               if (imageBase64 != null) break;
@@ -1023,7 +1025,7 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
               final candidates = jsonLine['candidates'] ?? [];
               for (final candidate in candidates) {
                 final parts = candidate['content']?['parts'] ?? [];
-                imageBase64 = _extractImageB64FromParts(parts);
+                imageBase64 = extractImageB64FromParts(parts);
                 if (imageBase64 != null) break;
               }
               if (imageBase64 != null) break;
@@ -1095,9 +1097,10 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
           return url;
         })();
 
-        Future<String> _ensureUrl(String name, Uint8List bytes) async {
-          if (name.startsWith('http://') || name.startsWith('https://'))
+        Future<String> ensureUrl(String name, Uint8List bytes) async {
+          if (name.startsWith('http://') || name.startsWith('https://')) {
             return name;
+          }
           final url = await SupabaseService.uploadProfileImageBytes(
             bytes: bytes,
             filename: name.split('/').isNotEmpty
@@ -1108,11 +1111,11 @@ class _VirtualTryOnPageState extends State<VirtualTryOnPage> {
           return url;
         }
 
-        final garmentUrl = await _ensureUrl(
+        final garmentUrl = await ensureUrl(
           _currentMainImage,
           productImageBytes,
         );
-        final personUrl = await _ensureUrl('user-photo.jpg', userImageBytes);
+        final personUrl = await ensureUrl('user-photo.jpg', userImageBytes);
         final uri = Uri.parse('$baseUrl/process_image');
         final resp = await http.post(
           uri,

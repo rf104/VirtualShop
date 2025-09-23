@@ -158,8 +158,9 @@ class _ShopProfilePageState extends State<ShopProfilePage> {
 
       final base = _baseUrl;
       final headers = <String, String>{'Content-Type': 'application/json'};
-      if (token != null && token.isNotEmpty)
+      if (token != null && token.isNotEmpty) {
         headers['Authorization'] = 'Bearer $token';
+      }
 
       // Fetch products
       final productsResp = await http.get(

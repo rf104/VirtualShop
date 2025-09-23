@@ -9,10 +9,18 @@ class EditProfilePage extends StatefulWidget {
 
 class _EditProfilePageState extends State<EditProfilePage> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController _nameController = TextEditingController(text: 'Alice Eve');
-  final TextEditingController _emailController = TextEditingController(text: 'aliceeve@gmail.com');
-  final TextEditingController _phoneController = TextEditingController(text: '+8801305030143');
-  final TextEditingController _dobController = TextEditingController(text: '03 Jun, 2002');
+  final TextEditingController _nameController = TextEditingController(
+    text: 'Alice Eve',
+  );
+  final TextEditingController _emailController = TextEditingController(
+    text: 'aliceeve@gmail.com',
+  );
+  final TextEditingController _phoneController = TextEditingController(
+    text: '+8801305030143',
+  );
+  final TextEditingController _dobController = TextEditingController(
+    text: '03 Jun, 2002',
+  );
   String _selectedGender = 'Female';
 
   @override
@@ -190,10 +198,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       decoration: BoxDecoration(
         color: const Color(0xFF2D2D44),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: Colors.blue.withOpacity(0.3),
-          width: 1,
-        ),
+        border: Border.all(color: Colors.blue.withOpacity(0.3), width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.3),
@@ -212,24 +217,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
         ),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: const TextStyle(
-            color: Colors.grey,
-            fontSize: 14,
-          ),
-          prefixIcon: Icon(
-            icon,
-            color: Colors.blue,
-            size: 22,
-          ),
+          labelStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+          prefixIcon: Icon(icon, color: Colors.blue, size: 22),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 20,
             vertical: 18,
           ),
-          floatingLabelStyle: const TextStyle(
-            color: Colors.blue,
-            fontSize: 16,
-          ),
+          floatingLabelStyle: const TextStyle(color: Colors.blue, fontSize: 16),
         ),
         validator: (value) {
           if (value == null || value.isEmpty) {
@@ -246,10 +241,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       decoration: BoxDecoration(
         color: const Color(0xFF2D2D44),
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: Colors.blue.withOpacity(0.3),
-          width: 1,
-        ),
+        border: Border.all(color: Colors.blue.withOpacity(0.3), width: 1),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.3),
@@ -262,7 +254,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: DropdownButtonFormField<String>(
-          value: _selectedGender,
+          initialValue: _selectedGender,
           dropdownColor: const Color(0xFF2D2D44),
           style: const TextStyle(
             color: Color.fromARGB(255, 243, 241, 241),
@@ -271,10 +263,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           ),
           decoration: const InputDecoration(
             labelText: 'Gender',
-            labelStyle: TextStyle(
-              color: Colors.grey,
-              fontSize: 14,
-            ),
+            labelStyle: TextStyle(color: Colors.grey, fontSize: 14),
             prefixIcon: Icon(
               Icons.person_outline,
               color: Colors.blue,
@@ -282,22 +271,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
             ),
             border: InputBorder.none,
             contentPadding: EdgeInsets.symmetric(vertical: 18),
-            floatingLabelStyle: TextStyle(
-              color: Colors.blue,
-              fontSize: 16,
-            ),
+            floatingLabelStyle: TextStyle(color: Colors.blue, fontSize: 16),
           ),
-          icon: const Icon(
-            Icons.keyboard_arrow_down,
-            color: Colors.grey,
-          ),
+          icon: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
           items: ['Male', 'Female', 'Other'].map((String gender) {
             return DropdownMenuItem(
               value: gender,
-              child: Text(
-                gender,
-                style: const TextStyle(color: Colors.white),
-              ),
+              child: Text(gender, style: const TextStyle(color: Colors.white)),
             );
           }).toList(),
           onChanged: (String? newValue) {

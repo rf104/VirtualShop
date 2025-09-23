@@ -36,7 +36,8 @@ def get_seller(seller_id: str, client=Depends(get_supabase_client)):
     Get seller details.
     """
     print(f"Debug: Fetching seller with id={seller_id}")  # Debug print
-    res = client.table("sellers").select("*").eq("id", seller_id).single().execute()
+    res = client.table("sellers").select(
+        "*").eq("id", seller_id).single().execute()
     if getattr(res, "error", None):
         print(f"Error fetching seller: {res.error}")  # Debug print
         raise HTTPException(status_code=400, detail=str(res.error))
@@ -57,6 +58,7 @@ def get_seller_products(seller_id: str, client=Depends(get_supabase_client)):
             "id,auth_id,name,description,category,brand,price,stock,condition,dimensions,weight_kg,is_featured,is_in_stock,created_at,updated_at,rating"
         )
         .eq("auth_id", seller_id)
+        .eq("approval_status", "approved")
         .execute()
     )
 
@@ -211,7 +213,8 @@ def get_seller_transactions(seller_id: str, client=Depends(get_supabase_client))
     try:
         # 1. Seller products
         products_res = (
-            client.table("products").select("id").eq("auth_id", seller_id).execute()
+            client.table("products").select("id").eq(
+                "auth_id", seller_id).execute()
         )
         if getattr(products_res, "error", None):
             raise HTTPException(
@@ -286,8 +289,10 @@ def get_seller_transactions(seller_id: str, client=Depends(get_supabase_client))
             )
 
             # Buyer info resolution
-            auth_ref = pay.get("payer_auth_id") or order_info.get("user_auth_id")
-            buyer_info, buyer_display_name = _fetch_buyer_info(client, auth_ref)
+            auth_ref = pay.get(
+                "payer_auth_id") or order_info.get("user_auth_id")
+            buyer_info, buyer_display_name = _fetch_buyer_info(
+                client, auth_ref)
             if not buyer_display_name:
                 buyer_display_name = "Unknown Buyer"
 
@@ -319,7 +324,8 @@ def get_seller_transactions(seller_id: str, client=Depends(get_supabase_client))
                 if order_info
                 else None
             )
-            txn_code = _short_txn_id(pay.get("transaction_id") or pay.get("id"))
+            txn_code = _short_txn_id(
+                pay.get("transaction_id") or pay.get("id"))
 
             enriched.append(
                 {
@@ -344,7 +350,8 @@ def get_seller_transactions(seller_id: str, client=Depends(get_supabase_client))
         raise
     except Exception as e:
         print(f"Debug: Exception in get_seller_transactions: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Internal server error: {e}")
 
 
 @router.get("/{seller_id}/reviews")
@@ -443,7 +450,8 @@ def get_seller_reviews(seller_id: str, client=Depends(get_supabase_client)):
             enriched_reviews.append(enriched_review)
 
         total_reviews = len(enriched_reviews)
-        average_rating = round(rating_sum / total_reviews, 2) if total_reviews else 0.0
+        average_rating = round(rating_sum / total_reviews,
+                               2) if total_reviews else 0.0
 
         return {
             "seller_id": seller_id,
@@ -457,4 +465,5 @@ def get_seller_reviews(seller_id: str, client=Depends(get_supabase_client)):
         raise
     except Exception as e:
         print(f"Debug: Exception in get_seller_reviews: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Internal server error: {e}")

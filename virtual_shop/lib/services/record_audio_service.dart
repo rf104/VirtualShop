@@ -45,7 +45,7 @@ class RecordAudioRecordingService implements AudioRecordingService {
     } catch (e) {
       print('Failed to start recording: $e');
       _isSupported = false;
-      throw e;
+      rethrow;
     }
   }
 
@@ -59,7 +59,7 @@ class RecordAudioRecordingService implements AudioRecordingService {
       return await _audioRecorder.stop();
     } catch (e) {
       print('Failed to stop recording: $e');
-      throw e;
+      rethrow;
     }
   }
 

@@ -136,8 +136,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
       final uri = Uri.parse('$_baseUrl/sellers/$_sellerAuthId/transactions');
       final headers = <String, String>{'Content-Type': 'application/json'};
       final session = Supabase.instance.client.auth.currentSession;
-      if (session != null)
+      if (session != null) {
         headers['Authorization'] = 'Bearer ${session.accessToken}';
+      }
       final resp = await http.get(uri, headers: headers);
       if (resp.statusCode == 200) {
         final body = json.decode(resp.body) as Map<String, dynamic>;
@@ -171,8 +172,9 @@ class _SellerDashboardPageState extends State<SellerDashboardPage> {
       final uri = Uri.parse('$_baseUrl/sellers/$_sellerAuthId/reviews');
       final headers = <String, String>{'Content-Type': 'application/json'};
       final session = Supabase.instance.client.auth.currentSession;
-      if (session != null)
+      if (session != null) {
         headers['Authorization'] = 'Bearer ${session.accessToken}';
+      }
       final resp = await http
           .get(uri, headers: headers)
           .timeout(const Duration(seconds: 15));
@@ -2049,7 +2051,7 @@ class _ThreeDModelUploadCardState extends State<_ThreeDModelUploadCard> {
             )
           else if (_products.isNotEmpty)
             DropdownButtonFormField<String>(
-              value: _selectedProductId,
+              initialValue: _selectedProductId,
               items: _products.map((p) {
                 final name = (p['name'] ?? 'Unnamed').toString();
                 final id = p['id'].toString();

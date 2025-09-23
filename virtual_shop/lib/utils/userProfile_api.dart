@@ -86,8 +86,9 @@ class ApiService {
     if (email != null && email.isNotEmpty) request.fields['email'] = email;
     if (phone != null && phone.isNotEmpty) request.fields['phone'] = phone;
     if (dob != null && dob.isNotEmpty) request.fields['dob'] = dob;
-    if (address != null && address.isNotEmpty)
+    if (address != null && address.isNotEmpty) {
       request.fields['address'] = address;
+    }
 
     // Add profile image if provided
     if (avatar != null) {

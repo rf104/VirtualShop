@@ -976,8 +976,9 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       final uri = Uri.parse('$base/products/${widget.product.id}/3dmodel');
       final headers = <String, String>{'Content-Type': 'application/json'};
       final session = Supabase.instance.client.auth.currentSession;
-      if (session != null)
+      if (session != null) {
         headers['Authorization'] = 'Bearer ${session.accessToken}';
+      }
       final resp = await http
           .get(uri, headers: headers)
           .timeout(const Duration(seconds: 10));

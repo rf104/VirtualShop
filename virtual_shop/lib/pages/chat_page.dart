@@ -68,7 +68,7 @@ class _ChatPageState extends State<ChatPage>
 
   // --- Audio and Mode Management ---
   late final AudioRecordingService _audioService;
-  ResponseMode _responseMode =
+  final ResponseMode _responseMode =
       ResponseMode.audio; // The default response mode is text.
   bool _isAudioSupported =
       true; // Flag to track if audio recording is supported
@@ -245,7 +245,7 @@ class _ChatPageState extends State<ChatPage>
       final modelName = 'gemini-2.0-flash-live-001';
 
       // Build dynamic product context if a product is provided
-      String _buildProductContext(Product p) {
+      String buildProductContext(Product p) {
         final desc = p.description.trim();
         final truncatedDesc = desc.length > 600
             ? '${desc.substring(0, 600)}…'
@@ -262,7 +262,7 @@ class _ChatPageState extends State<ChatPage>
       }
 
       final productInstruction = widget.product != null
-          ? '\n\n${_buildProductContext(widget.product!)}\n\nAlways in every message try to praise the product and push the product about its awesomeness, try to make the sell, When the user seems interested in this product, proactively highlight its key benefits, unique selling points, and offer complementary or related items. If user intent matches another category, you may generalize and improvised in such a way that suggest this is the right product.'
+          ? '\n\n${buildProductContext(widget.product!)}\n\nAlways in every message try to praise the product and push the product about its awesomeness, try to make the sell, When the user seems interested in this product, proactively highlight its key benefits, unique selling points, and offer complementary or related items. If user intent matches another category, you may generalize and improvised in such a way that suggest this is the right product.'
           : '';
       // Initiate the connection with specified parameters.
       final session = await _genAI.live.connect(
@@ -493,18 +493,16 @@ class _ChatPageState extends State<ChatPage>
                     .play(); // Start playback; it will wait for sources to be added
               }
 
-              if (_wavSub == null) {
-                _wavSub = _pcmToWav.convert.listen((wavBytes) {
-                  // Add each WAV chunk as a playable source
-                  final chunkSource = AudioSource.uri(
-                    Uri.dataFromBytes(
-                      Uint8List.fromList(wavBytes),
-                      mimeType: 'audio/wav',
-                    ),
-                  );
-                  _concatSource?.add(chunkSource);
-                });
-              }
+              _wavSub ??= _pcmToWav.convert.listen((wavBytes) {
+                // Add each WAV chunk as a playable source
+                final chunkSource = AudioSource.uri(
+                  Uri.dataFromBytes(
+                    Uint8List.fromList(wavBytes),
+                    mimeType: 'audio/wav',
+                  ),
+                );
+                _concatSource?.add(chunkSource);
+              });
 
               // Feed the PCM chunk directly for progressive conversion
               _pcmToWav.run(Uint8List.fromList(bytes));
@@ -930,6 +928,7 @@ class _ChatPageState extends State<ChatPage>
                             final msgIndex = index - streamingCount;
                             final msg = assistantMessages.reversed
                                 .toList()[msgIndex];
+                            return null;
                             // return Bubble(message: msg, captionStyle: true);
                           },
                         );
